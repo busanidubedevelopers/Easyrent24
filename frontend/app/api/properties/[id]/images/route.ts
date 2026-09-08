@@ -1,0 +1,110 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getAuthenticatedProfile, ForbiddenError } from '@backend/lib/auth';
+import { getSupabaseAdmin } from '@backend/lib/supabaseAdmin';
+import { toErrorResponse } from '@backend/lib/apiError';
+
+interface RouteParams {
+  params: Promise<{ id: string }>;
+}
+
+const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+/**
+ * POST /api/properties/[id]/images
+ *
+ * Uploads one image for a property. Owner or admin only. Expects
+ * multipart/form-data with a single "file" field.
+ *
+ * Validation happens here (size, type) BEFORE anything touches storage —
+ * the storage bucket's RLS policy (migration 003) only checks *who* is
+ * uploading and *where*, not file size or content type, so this route is
+ * the only place those checks exist. Uploads go through the admin client
+ * (bypassing RLS) because the ownership check has already been done
+ * explicitly above, in code we can unit test — relying on RLS alone here
+ * would mean re-deriving the same check twice with no added safety.
+ */
+export async function POST(request: NextRequest, { params }: RouteParams) {
+  const { id } = await params;
+
+  try {
+    const supabase = await getSupabaseServerClient();
+    const profile = await getAuthenticatedProfile(supabase);
+
+    const { data: property, error: fetchError } = await supabase
+      .from('properties')
+      .select('landlord_id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchError) {
+      return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    }
+    if (!property) {
+      return NextResponse.json({ error: 'Property not found.' }, { status: 404 });
+    }
+    if (property.landlord_id !== profile.id && profile.role !== 'admin') {
+      throw new ForbiddenError('You can only upload images to your own properties.');
+    }
+
+    const formData = await request.formData();
+    const file = formData.get('file');
+
+    if (!file || !(file instanceof File)) {
+      return NextResponse.json({ error: 'No file provided.' }, { status: 400 });
+    }
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return NextResponse.json(
+        { error: `File type must be one of: ${ALLOWED_TYPES.join(', ')}.` },
+        { status: 400 }
+      );
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      return NextResponse.json(
+        { error: `File must be ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB or smaller.` },
+        { status: 400 }
+      );
+    }
+
+    const admin = getSupabaseAdmin();
+    const ext = file.name.split('.').pop() || 'jpg';
+    const path = `${property.landlord_id}/${id}/${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await admin.storage
+      .from('property-images')
+      .upload(path, await file.arrayBuffer(), { contentType: file.type });
+
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError.message }, { status: 500 });
+    }
+
+    const { data: publicUrlData } = admin.storage.from('property-images').getPublicUrl(path);
+    const publicUrl = publicUrlData.publicUrl;
+
+    // Append the new image URL to the property's images array.
+    const { data: current } = await supabase
+      .from('properties')
+      .select('images')
+      .eq('id', id)
+      .single();
+
+    const updatedImages = [...(current?.images ?? []), publicUrl];
+
+    const { data: updated, error: updateError } = await supabase
+      .from('properties')
+      .update({ images: updatedImages })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ property: updated, uploadedUrl: publicUrl }, { status: 201 });
+  } catch (err) {
+    const { status, body } = toErrorResponse(err);
+    return NextResponse.json(body, { status });
+  }
+}

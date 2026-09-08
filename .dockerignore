@@ -1,0 +1,35 @@
+# Never send these into the Docker build context — they contain real
+# secrets (Supabase service role key, PayFast credentials) that must only
+# ever come from the runtime environment (AWS Secrets Manager), never be
+# baked into an image layer where they'd be recoverable from the image itself.
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Dependencies (installed fresh inside the image, not copied from host)
+**/node_modules
+
+# Build output (regenerated inside the image)
+frontend/.next
+frontend/out
+
+# Version control
+.git
+.gitignore
+
+# Editor/OS cruft
+.vscode
+.idea
+**/.DS_Store
+
+# Test artifacts, logs, docs not needed at build time
+**/*.log
+**/coverage
+backend/tests
+
+# Misc project files not needed in the image
+*.md
+frontend/lint_output.txt
+frontend/md_to_pdf.log
+frontend/dashboard.html
+frontend/output.html

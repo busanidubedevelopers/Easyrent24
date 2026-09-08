@@ -1,0 +1,36 @@
+# Local convenience only — this is NOT what AWS App Runner uses in
+# production (App Runner builds and runs the image directly from ECR).
+# This file exists so you can test the actual production container image
+# locally before pushing it, using your real .env.local values.
+#
+# Usage:
+#   docker compose up --build
+#   curl http://localhost:3000/api/health
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    ports:
+      - "3000:3000"
+    environment:
+      # Server-only secrets are passed at RUNTIME, not baked into the image
+      # at build time — see the Dockerfile's comment on why NEXT_PUBLIC_*
+      # build args are the only thing safe to pass as --build-arg.
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      PAYFAST_MODE: ${PAYFAST_MODE:-sandbox}
+      PAYFAST_MERCHANT_ID: ${PAYFAST_MERCHANT_ID}
+      PAYFAST_MERCHANT_KEY: ${PAYFAST_MERCHANT_KEY}
+      PAYFAST_PASSPHRASE: ${PAYFAST_PASSPHRASE}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
