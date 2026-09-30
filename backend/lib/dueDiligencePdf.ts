@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { Writer } from './leasePdf';
-import { formatRand } from './affordability';
+import { formatRand, RENT_TO_GROSS_TARGET } from './affordability';
 import type { DiligenceStatus, DueDiligence } from './dueDiligence';
 
 // Printable due diligence report for the agent's file or the property owner.
@@ -71,7 +71,7 @@ export async function renderDueDiligencePdf(dd: DueDiligence, preparedFor: strin
     ['Debt repayments', `${formatRand(f.debt_repayments)}${f.debt_to_net_pct !== null ? ` (${f.debt_to_net_pct}% of take-home)` : ''}`],
     ['Living costs (estimate)', formatRand(f.living_costs)],
     ['Left after rent', f.disposable_after_rent === null ? '—' : formatRand(f.disposable_after_rent)],
-    ['Rent to gross income', f.rent_to_gross_pct === null ? '—' : `${f.rent_to_gross_pct}% (guideline 30%)`],
+    ['Rent to gross income', f.rent_to_gross_pct === null ? '—' : `${f.rent_to_gross_pct}% (favourable up to ${RENT_TO_GROSS_TARGET}%)`],
     ['Maximum affordable rent', formatRand(f.max_affordable_rent)],
   ];
   for (const [k, v] of rows) w.text(`${k}: ${v}`, { size: 10, gapAfter: 1 });

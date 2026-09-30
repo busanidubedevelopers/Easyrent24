@@ -1,5 +1,5 @@
 import type { BankStatementData, IdDocumentData, PayslipData } from './extraction';
-import { monthlyOtherCredits } from './affordability';
+import { monthlyOtherCredits, RENT_TO_GROSS_TARGET } from './affordability';
 
 // ============================================================================
 // Application verification
@@ -53,8 +53,8 @@ export interface VerificationSummary {
 
 /** Tolerance before declared vs documented income is flagged. */
 const INCOME_TOLERANCE = 0.1;
-/** Common SA affordability rule of thumb: rent ≤ 30% of gross income. */
-const AFFORDABLE_PCT = 30;
+/** Favourable rent-to-income ratio (see affordability.ts). */
+const AFFORDABLE_PCT = RENT_TO_GROSS_TARGET;
 const STRETCHED_PCT = 40;
 const STALE_DOCUMENT_DAYS = 90;
 

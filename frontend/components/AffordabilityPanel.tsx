@@ -2,6 +2,7 @@
 
 import { AlertTriangle, CheckCircle2, CircleHelp, ShieldAlert, ThumbsUp, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RENT_TO_GROSS_TARGET } from "@backend/lib/affordability";
 
 export interface AffordabilityAssessment {
   recommendation: "approve" | "approve_with_conditions" | "decline" | "insufficient_information";
@@ -116,8 +117,8 @@ export function AffordabilityPanel({ assessment }: { assessment: AffordabilityAs
         <Figure
           label="Rent to income"
           value={r2g === null ? "—" : `${r2g}%`}
-          hint="of gross · guideline 30%"
-          tone={r2g === null ? undefined : r2g <= 30 ? "good" : r2g <= 40 ? "warn" : "bad"}
+          hint={`of gross · favourable ≤ ${RENT_TO_GROSS_TARGET}%`}
+          tone={r2g === null ? undefined : r2g <= RENT_TO_GROSS_TARGET ? "good" : r2g <= 40 ? "warn" : "bad"}
         />
         <Figure
           label="Current rent"

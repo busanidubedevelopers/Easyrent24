@@ -2,7 +2,7 @@ import type { ApplicationReview } from './applicationReview';
 import type { PropertySummary } from './applicationAccess';
 import type { VerificationCheck } from './verification';
 import type { AnalystReport } from './aiAnalyst';
-import { formatRand } from './affordability';
+import { formatRand, RENT_TO_GROSS_TARGET } from './affordability';
 import { TENANT_FEE_ZAR } from './applications';
 
 // ============================================================================
@@ -133,8 +133,8 @@ export function buildDueDiligence(input: {
   if (a.figures.rent_to_gross_pct !== null) {
     affordItems.push({
       label: 'Rent to gross income',
-      status: a.figures.rent_to_gross_pct <= 30 ? 'passed' : a.figures.rent_to_gross_pct <= 40 ? 'attention' : 'failed',
-      detail: `${a.figures.rent_to_gross_pct}% (guideline 30%).`,
+      status: a.figures.rent_to_gross_pct <= RENT_TO_GROSS_TARGET ? 'passed' : a.figures.rent_to_gross_pct <= 40 ? 'attention' : 'failed',
+      detail: `${a.figures.rent_to_gross_pct}% (favourable up to ${RENT_TO_GROSS_TARGET}%).`,
     });
   }
   if (a.figures.declared_expenses !== null) {

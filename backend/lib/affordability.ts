@@ -82,8 +82,12 @@ export interface AffordabilityAssessment {
 }
 
 // ── Policy (one place to tune) ──────────────────────────────────────────────
-/** Widely used SA letting guideline: rent ≤ 30% of gross income. */
-export const RENT_TO_GROSS_TARGET = 30;
+/**
+ * Favourable rent-to-income ratio: rent ≤ 33% (a third) of gross income.
+ * The one place this guideline is set — verification, due diligence, the
+ * report and the landlord's screen all read it from here.
+ */
+export const RENT_TO_GROSS_TARGET = 33;
 const RENT_TO_GROSS_STRETCH = 35;
 const RENT_TO_GROSS_LIMIT = 40;
 /** Living-cost allowance when we can't see actual spending: share of take-home pay, with a floor per adult. */

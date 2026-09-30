@@ -127,8 +127,8 @@ describe('assessAffordability', () => {
     expect(a.figures.current_rent).toBe(8500);
     expect(a.figures.current_rent_source).toBe('bank_statement');
     expect(a.figures.debt_repayments).toBe(2000);
-    // min(30% of 40 000, 31 000 − 2 000 − 7 750) = 12 000
-    expect(a.figures.max_affordable_rent).toBe(12000);
+    // min(33% of 40 000, 31 000 − 2 000 − 7 750) = 13 200
+    expect(a.figures.max_affordable_rent).toBe(13200);
     expect(a.flags.some((f) => f.severity === 'positive' && f.text.includes('Paid rent every month'))).toBe(true);
     expect(a.recommended_deposit_months).toBe(1);
   });
@@ -155,10 +155,10 @@ describe('assessAffordability', () => {
     });
 
     expect(a.recommendation).toBe('decline');
-    // min(6 000, 16 000 − 0 − 4 000) = 6 000
-    expect(a.figures.max_affordable_rent).toBe(6000);
-    expect(a.headline).toContain('R6 000');
-    expect(a.reasons.some((r) => r.includes('at or below R6 000'))).toBe(true);
+    // min(33% of 20 000, 16 000 − 0 − 4 000) = 6 600
+    expect(a.figures.max_affordable_rent).toBe(6600);
+    expect(a.headline).toContain('R6 600');
+    expect(a.reasons.some((r) => r.includes('at or below R6 600'))).toBe(true);
   });
 
   it('flags a garnishee order and returned debit orders and requires a debit order', () => {
