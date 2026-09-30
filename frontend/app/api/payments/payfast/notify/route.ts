@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@backend/lib/supabaseAdmin';
-import { verifySignature, amountsMatch, validateWithPayfast, isPayfastIp, type PayfastMode } from '@backend/lib/payfast';
-import { isValidApplicationStatusTransition, type ApplicationStatus } from '@backend/lib/applications';
+import { getAdminDb } from '@backend/lib/adminDb';
+import { verifySignature, amountsMatch, validateWithPayfast, isPayfastSource, type PayfastMode } from '@backend/lib/payfast';
+import { markPaymentComplete, markPaymentFailed } from '@backend/lib/paymentCompletion';
 import { logger } from '@backend/lib/security/logger';
 
 /**
@@ -14,7 +14,7 @@ import { logger } from '@backend/lib/security/logger';
  * requires a signed-in user; this one instead must independently prove the
  * request really came from PayFast, using three separate checks:
  *
- *   0. IP whitelisting (validates request originates from PayFast subnets)
+ *   0. Source IP check (PayFast's subnets or current ITN host addresses)
  *   1. Signature verification (was the data tampered with in transit?)
  *   2. Server-to-server validation callback (did this genuinely originate
  *      from PayFast's servers, not just something that knows our passphrase?)
@@ -27,9 +27,12 @@ import { logger } from '@backend/lib/security/logger';
  */
 export async function POST(request: NextRequest) {
   // --- Check 0: PayFast IP Whitelist (production enforcement) ---
-  const forwardedFor = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip');
-  if (process.env.NODE_ENV === 'production' && !isPayfastIp(forwardedFor)) {
-    logger.warn('PayFast ITN: rejected unauthorized IP', { ip: forwardedFor });
+  // Behind Cloudflare (tunnel/proxy) CF-Connecting-IP is the real client and
+  // can't be spoofed; the first X-Forwarded-For entry can be set by the caller.
+  const sourceIp =
+    request.headers.get('cf-connecting-ip') || request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for');
+  if (process.env.NODE_ENV === 'production' && !(await isPayfastSource(sourceIp))) {
+    logger.warn('PayFast ITN: rejected unauthorized IP', { ip: sourceIp });
     return NextResponse.json({ error: 'Unauthorized IP.' }, { status: 403 });
   }
 
@@ -63,11 +66,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing m_payment_id.' }, { status: 400 });
   }
 
-  const admin = getSupabaseAdmin();
+  const admin = getAdminDb();
 
   const { data: payment, error: fetchError } = await admin
     .from('payments')
-    .select('id, application_id, amount_gross, status')
+    .select('id, application_id, invite_id, amount_gross, status')
     .eq('m_payment_id', mPaymentId)
     .maybeSingle();
 
@@ -93,45 +96,22 @@ export async function POST(request: NextRequest) {
   if (!paidAmount || !amountsMatch(Number(payment.amount_gross), paidAmount)) {
     // Log only the payment ID, not the amounts — amounts are PII when tied to an identity.
     console.error('PayFast ITN: amount mismatch', { mPaymentId });
-    await admin.from('payments').update({ status: 'failed', raw_itn_payload: fieldsObject }).eq('id', payment.id);
+    // raw_itn_payload is jsonb — this client binds params via node-postgres
+    // directly (no Supabase/PostgREST layer to auto-serialize), so a plain
+    // object must be stringified or Postgres rejects it as invalid JSON.
+    await admin.from('payments').update({ status: 'failed', raw_itn_payload: JSON.stringify(fieldsObject) }).eq('id', payment.id);
     return NextResponse.json({ error: 'Amount mismatch.' }, { status: 400 });
   }
 
   const payfastStatus = fieldsObject.payment_status; // PayFast sends 'COMPLETE', 'FAILED', etc.
   const newStatus = payfastStatus === 'COMPLETE' ? 'complete' : 'failed';
 
-  await admin
-    .from('payments')
-    .update({
-      status: newStatus,
-      pf_payment_id: fieldsObject.pf_payment_id ?? null,
-      raw_itn_payload: fieldsObject,
-    })
-    .eq('id', payment.id);
-
-  if (newStatus === 'complete' && payment.application_id) {
-    const { data: application } = await admin
-      .from('applications')
-      .select('status')
-      .eq('id', payment.application_id)
-      .maybeSingle();
-
-    const updates: Record<string, unknown> = {
-      payment_status: 'paid',
-      paid_at: new Date().toISOString(),
-    };
-
-    // Only auto-advance the application status if that transition is
-    // actually valid from its current state — e.g. don't try to move an
-    // already-cancelled application to 'reviewing' just because a stale
-    // payment notification arrived after the fact.
-    if (application && isValidApplicationStatusTransition(application.status as ApplicationStatus, 'reviewing')) {
-      updates.status = 'reviewing';
-    }
-
-    await admin.from('applications').update(updates).eq('id', payment.application_id);
-  } else if (newStatus === 'failed' && payment.application_id) {
-    await admin.from('applications').update({ payment_status: 'failed' }).eq('id', payment.application_id);
+  const itnFields = { pf_payment_id: fieldsObject.pf_payment_id ?? null, raw_itn_payload: JSON.stringify(fieldsObject) };
+  if (newStatus === 'complete') {
+    await markPaymentComplete(admin, payment, itnFields);
+  } else {
+    // A failed registration fee leaves the invite 'registered' so the tenant can try again.
+    await markPaymentFailed(admin, payment, itnFields);
   }
 
   return NextResponse.json({ received: true });

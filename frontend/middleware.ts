@@ -1,5 +1,5 @@
-import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { jwtVerify } from 'jose';
 import { verifyCsrfOrigin } from '@backend/lib/security/csrfGuard';
 
 const BLOCKED_USER_AGENTS = [
@@ -14,6 +14,7 @@ const BLOCKED_USER_AGENTS = [
 ];
 
 const roleRequirements: Record<string, string[]> = {
+  '/admin': ['admin'],
   '/dashboard': ['landlord', 'admin'],
   '/applications': ['landlord', 'admin'],
   '/documents': ['landlord', 'admin'],
@@ -21,10 +22,14 @@ const roleRequirements: Record<string, string[]> = {
   '/credit-check': ['landlord', 'admin'],
   '/financing': ['landlord', 'admin'],
   '/list-property': ['landlord', 'admin'],
-  '/handyman': ['handyman', 'admin'],
+  '/handyman': ['tenant', 'landlord', 'handyman', 'admin'],
   '/checkout': ['tenant', 'landlord', 'handyman', 'admin'],
   '/reviews': ['tenant', 'landlord', 'handyman', 'admin'],
 };
+
+const JWT_SECRET_STRING =
+  process.env.JWT_SECRET || 'easyrent-secret-key-32-characters-minimum-length-key!';
+const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_STRING);
 
 export async function middleware(request: NextRequest) {
   // 1. Block known malicious exploit scanners
@@ -50,31 +55,11 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  let supabaseResponse = NextResponse.next({ request });
-  supabaseResponse.headers.set('x-request-id', requestId);
+  const response = NextResponse.next({ request });
+  response.headers.set('x-request-id', requestId);
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-  const supabase = createServerClient(supabaseUrl, supabaseKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        supabaseResponse = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          supabaseResponse.cookies.set(name, value, options)
-        );
-      },
-    },
-  });
-
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-
+  // 4. Role-based Route Protection
   let requiredRoles: string[] | null = null;
-
   for (const [pathPrefix, roles] of Object.entries(roleRequirements)) {
     if (currentPath.startsWith(pathPrefix)) {
       requiredRoles = roles;
@@ -83,24 +68,30 @@ export async function middleware(request: NextRequest) {
   }
 
   if (requiredRoles) {
-    if (userError || !user) {
+    const tokenCookie = request.cookies.get('easyrent_token')?.value;
+
+    if (!tokenCookie) {
       const signInUrl = new URL('/signin', request.url);
       signInUrl.searchParams.set('redirect_to', currentPath);
       return NextResponse.redirect(signInUrl);
     }
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+    try {
+      const { payload } = await jwtVerify(tokenCookie, JWT_SECRET);
+      const userRole = (payload.role as string) || 'tenant';
 
-    if (!profile || !requiredRoles.includes(profile.role)) {
-      return NextResponse.redirect(new URL('/', request.url));
+      if (!requiredRoles.includes(userRole)) {
+        return NextResponse.redirect(new URL('/', request.url));
+      }
+    } catch {
+      // Invalid/expired token
+      const signInUrl = new URL('/signin', request.url);
+      signInUrl.searchParams.set('redirect_to', currentPath);
+      return NextResponse.redirect(signInUrl);
     }
   }
 
-  return supabaseResponse;
+  return response;
 }
 
 export const config = {

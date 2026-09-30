@@ -1,0 +1,5 @@
+# Dependencies are installed from package-lock.json (npm ci), never committed.
+node_modules/
+
+# Local secrets
+.env*

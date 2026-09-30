@@ -67,101 +67,53 @@ export default function FindHome() {
     e.preventDefault();
     setLoading(true);
     setHasSearched(true);
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // Mock Data Generation based on search
-    const baseLocation = searchParams.location || "Cape Town";
-    const basePrice = parseInt(searchParams.maxPrice) || 15000;
-    
-    const mockProperties: Property[] = [
-      {
-        id: 1,
-        source: "Property24",
-        title: `Modern Apartment in ${baseLocation}`,
-        address: `45 Main Road, ${baseLocation}`,
-        price: basePrice * 0.9,
-        bedrooms: parseInt(searchParams.minBedrooms) || 2,
-        bathrooms: 2,
-        size: 85,
-        image: "/images/hero-apartment.png",
-        amenities: ['fiber', 'security', 'gym', 'pool'],
-        description: "Stunning modern apartment with mountain views and high-end finishes."
-      },
-      {
-        id: 2,
-        source: "Private Property",
-        title: `Spacious Family Home`,
-        address: `12 Oak Avenue, ${baseLocation} Suburbs`,
-        price: basePrice * 1.2,
-        bedrooms: (parseInt(searchParams.minBedrooms) || 2) + 1,
-        bathrooms: 2.5,
-        size: 150,
-        image: "/images/hero-apartment.png", // Reuse
-        amenities: ['garden', 'garage', 'pet_friendly', 'security'],
-        description: "Perfect for a growing family, close to schools and parks."
-      },
-      {
-        id: 3,
-        source: "Gumtree",
-        title: `Cozy Garden Cottage`,
-        address: `8 Willow Lane, ${baseLocation}`,
-        price: basePrice * 0.6,
-        bedrooms: 1,
-        bathrooms: 1,
-        size: 50,
-        image: "/images/hero-apartment.png", // Reuse
-        amenities: ['garden', 'fiber', 'pet_friendly'],
-        description: "Private entrance, secure parking, and water included."
-      },
-      {
-        id: 4,
-        source: "EasyRent Direct",
-        title: `Luxury Penthouse`,
-        address: `1 Sky Tower, ${baseLocation} CBD`,
-        price: basePrice * 1.5,
-        bedrooms: 3,
-        bathrooms: 3,
-        size: 180,
-        image: "/images/hero-apartment.png", // Reuse
-        amenities: ['fiber', 'security', 'gym', 'pool', 'aircon', 'garage'],
-        description: "Top floor penthouse with panoramic city and ocean views."
+    try {
+      const params = new URLSearchParams();
+      if (searchParams.location) params.set('location', searchParams.location);
+      if (searchParams.maxPrice) params.set('max_price', searchParams.maxPrice);
+      if (searchParams.minBedrooms) params.set('min_bedrooms', searchParams.minBedrooms);
+      if (searchParams.propertyType && searchParams.propertyType !== 'any') params.set('property_type', searchParams.propertyType);
+      params.set('status', 'published');
+      params.set('limit', '20');
+
+      const response = await fetch(`/api/properties?${params.toString()}`);
+      const payload = await response.json();
+
+      const properties = Array.isArray(payload?.properties) ? payload.properties : [];
+      const mapped = properties.map((property: any) => ({
+        id: property.id,
+        source: 'EasyRent',
+        title: property.title || 'Available Property',
+        address: property.address || 'Location available',
+        price: Number(property.price || 0),
+        bedrooms: Number(property.bedrooms || 0),
+        bathrooms: Number(property.bathrooms || 0),
+        size: Number(property.size_m2 || 0),
+        image: Array.isArray(property.images) && property.images.length > 0 ? property.images[0] : '/images/hero-apartment.png',
+        amenities: Array.isArray(property.features) ? property.features : [],
+        description: property.description || 'Move-in-ready rental opportunity.',
+        pois: {
+          work: poiLocations.work ? parseFloat((Math.random() * 15 + 2).toFixed(1)) : 0,
+          school: poiLocations.school ? parseFloat((Math.random() * 5 + 0.5).toFixed(1)) : 0,
+          gym: poiLocations.gym ? parseFloat((Math.random() * 3 + 0.2).toFixed(1)) : 0,
+        },
+      }));
+
+      if (selectedAmenities.length > 0) {
+        const toKeep = mapped.filter((property: Property) =>
+          selectedAmenities.some((amenity) => property.amenities.includes(amenity))
+        );
+        setResults(toKeep.length > 0 ? toKeep : mapped);
+      } else {
+        setResults(mapped);
       }
-    ];
-
-    // Enhance mock properties with random POI distances if POI locations are entered
-    mockProperties.forEach(prop => {
-        prop.pois = {
-            work: poiLocations.work ? parseFloat((Math.random() * 15 + 2).toFixed(1)) : 0,
-            school: poiLocations.school ? parseFloat((Math.random() * 5 + 0.5).toFixed(1)) : 0,
-            gym: poiLocations.gym ? parseFloat((Math.random() * 3 + 0.2).toFixed(1)) : 0
-        };
-    });
-
-    // Filter based on amenities selection (simple 'includes' logic for demo)
-    // If no amenities selected, show all. If selected, must have at least one match or prioritize matches.
-    // Let's implement strict filtering: Property must have ALL selected amenities? 
-    // Or maybe just show ones that match mostly. Let's do strict filtering for "Find match with specification" request.
-    
-    let filtered = mockProperties;
-    
-    if (selectedAmenities.length > 0) {
-      filtered = mockProperties.filter(p => 
-        selectedAmenities.every(a => p.amenities.includes(a))
-      );
-      
-      // Fallback if strict filtering returns practically nothing in our small mock data
-      if (filtered.length === 0) {
-          // Relax to "has at least one"
-           filtered = mockProperties.filter(p => 
-            selectedAmenities.some(a => p.amenities.includes(a))
-          );
-      }
+    } catch (err) {
+      console.error('Failed to load live listings:', err);
+      setResults([]);
+    } finally {
+      setLoading(false);
     }
-
-    setResults(filtered);
-    setLoading(false);
   };
 
   const handleApply = (property: Property) => {

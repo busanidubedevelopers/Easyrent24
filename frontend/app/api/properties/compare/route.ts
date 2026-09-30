@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { toErrorResponse } from '@backend/lib/apiError';
 import {
   rankComparables,
@@ -62,13 +62,13 @@ export async function GET(request: NextRequest) {
       price,
     };
 
-    const supabase = await getSupabaseServerClient();
+    const db = await getServerDb();
 
     // Only published listings count as real market data — draft/archived
     // properties aren't actually on the market, so including them would
     // pollute the comparison with prices nobody is actually being asked to
     // pay right now.
-    let query = supabase
+    let query = db
       .from('properties')
       .select('id, address, property_type, bedrooms, size_m2, price')
       .eq('status', 'published');
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const candidates: ComparableCandidate[] = (data ?? []).map((p) => ({
+    const candidates: ComparableCandidate[] = (data ?? []).map((p: any) => ({
       id: p.id,
       address: p.address,
       propertyType: p.property_type,

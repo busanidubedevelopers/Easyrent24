@@ -43,10 +43,8 @@ COPY backend ./backend
 # bundle (NEXT_PUBLIC_* only — never pass real secrets here, they'd end up
 # visible in the image layers and the browser bundle). Pass these via
 # --build-arg at build time.
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
-ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN cd frontend && npm run build
@@ -64,6 +62,12 @@ ENV HOSTNAME=0.0.0.0
 # unnecessary privilege-escalation risk if the app is ever compromised.
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
+# Uploaded documents (ID scans, payslips, bank statements) are written here
+# by backend/lib/postgresClient.ts's StorageBucket — created and owned by
+# nextjs now so the docker-compose named volume mounted over it inherits
+# that ownership, rather than being created root-owned on first mount.
+RUN mkdir -p /app/uploads && chown nextjs:nodejs /app/uploads
+
 # Only frontend's own standalone output is needed here — see the note at
 # the top of this file for why backend/ doesn't need to be copied in.
 COPY --from=builder --chown=nextjs:nodejs /repo/frontend/.next/standalone ./
@@ -77,6 +81,9 @@ EXPOSE 3000
 # This is what AWS App Runner (or any orchestrator) should poll to confirm
 # the container is alive — see frontend/app/api/health/route.ts.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+  # 127.0.0.1, not "localhost": localhost resolves to [::1] first in this image,
+  # but the Next server binds IPv4 only, so the IPv6 probe is refused and the
+  # container is reported unhealthy while actually serving fine.
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
 
 CMD ["node", "server.js"]

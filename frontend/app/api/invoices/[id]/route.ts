@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { getAuthenticatedProfile, ForbiddenError } from '@backend/lib/auth';
 import { toErrorResponse } from '@backend/lib/apiError';
 import {
@@ -31,10 +31,10 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const supabase = await getSupabaseServerClient();
-    await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    await getAuthenticatedProfile(db);
 
-    const { data, error } = await supabase.from('invoices').select('*').eq('id', id).maybeSingle();
+    const { data, error } = await db.from('invoices').select('*').eq('id', id).maybeSingle();
 
     if (error) {
       console.error(`GET /api/invoices/${id}: DB error`, error);
@@ -68,10 +68,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    const profile = await getAuthenticatedProfile(db);
 
-    const { data: existing, error: fetchError } = await supabase
+    const { data: existing, error: fetchError } = await db
       .from('invoices')
       .select('issuer_id, status')
       .eq('id', id)
@@ -103,7 +103,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       if (!valid) {
         return NextResponse.json({ error: 'Invalid line items.', details: errors }, { status: 400 });
       }
-      updates.line_items = lineItems;
+      // Same raw-object-to-jsonb issue as invoice creation — this client
+      // binds params via node-postgres directly, so a plain array must be
+      // stringified or Postgres rejects it as invalid JSON.
+      updates.line_items = JSON.stringify(lineItems);
       updates.amount = calculateInvoiceTotal(lineItems);
     }
 
@@ -146,7 +149,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'No valid fields to update.' }, { status: 400 });
     }
 
-    const { data, error } = await supabase.from('invoices').update(updates).eq('id', id).select().single();
+    const { data, error } = await db.from('invoices').update(updates).eq('id', id).select().single();
 
     if (error) {
       console.error(`PATCH /api/invoices/${id}: DB update error`, error);
@@ -175,10 +178,10 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    const profile = await getAuthenticatedProfile(db);
 
-    const { data: existing, error: fetchError } = await supabase
+    const { data: existing, error: fetchError } = await db
       .from('invoices')
       .select('issuer_id, status')
       .eq('id', id)
@@ -201,7 +204,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const { error } = await supabase.from('invoices').delete().eq('id', id);
+    const { error } = await db.from('invoices').delete().eq('id', id);
 
     if (error) {
       console.error(`DELETE /api/invoices/${id}: DB error`, error);

@@ -15,18 +15,26 @@ export type ApplicantData = {
   jobTitle: string;
   employmentType: string;
   monthlyIncome: string;
+  currentRent: string;
   
   bankName: string;
   accountNumber: string;
   accountType: string;
   payslipFile: File | null;
+  bankStatementFile: File | null;
   
   consentCreditCheck: boolean;
   consentIdVerification: boolean;
   consentBankStatements: boolean;
 };
 
+export type BudgetIncomeRow = { source: string; description: string; amount: string };
+
 export type ApplyFormData = ApplicantData & {
+  /** Household budget (main applicant): see components/apply/BudgetStep. */
+  livingSituation: string;
+  otherIncome: BudgetIncomeRow[];
+  expenses: Record<string, string>;
   propertyRef: string;
   propertyId: string | null;
   hasCoApplicant: boolean;
@@ -47,10 +55,12 @@ export const INITIAL_APPLICANT: ApplicantData = {
   jobTitle: "",
   employmentType: "",
   monthlyIncome: "",
+  currentRent: "",
   bankName: "",
   accountNumber: "",
   accountType: "",
   payslipFile: null,
+  bankStatementFile: null,
   consentCreditCheck: false,
   consentIdVerification: false,
   consentBankStatements: false,
@@ -72,6 +82,9 @@ export const useApplyStore = create<ApplyStore>((set) => ({
   currentStep: 1,
   formData: {
     ...INITIAL_APPLICANT,
+    livingSituation: "",
+    otherIncome: [],
+    expenses: {},
     propertyRef: "",
     propertyId: null,
     hasCoApplicant: false,
@@ -110,6 +123,9 @@ export const useApplyStore = create<ApplyStore>((set) => ({
     currentStep: 1,
     formData: {
       ...INITIAL_APPLICANT,
+      livingSituation: "",
+      otherIncome: [],
+      expenses: {},
       propertyRef: "",
       propertyId: null,
       hasCoApplicant: false,

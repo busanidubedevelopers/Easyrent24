@@ -14,12 +14,12 @@ vi.mock('../../../backend/lib/payfast', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../backend/lib/supabaseAdmin', () => ({
-  getSupabaseAdmin: vi.fn(),
+vi.mock('../../../backend/lib/adminDb', () => ({
+  getAdminDb: vi.fn(),
 }));
 
 const { validateWithPayfast } = await import('../../../backend/lib/payfast');
-const { getSupabaseAdmin } = await import('../../../backend/lib/supabaseAdmin');
+const { getAdminDb } = await import('../../../backend/lib/adminDb');
 
 // ── ITN body builder ──────────────────────────────────────────────────────────
 
@@ -104,7 +104,7 @@ function mockAdminWithPayment(
     };
   });
 
-  vi.mocked(getSupabaseAdmin).mockReturnValue({ from: fromMock } as any);
+  vi.mocked(getAdminDb).mockReturnValue({ from: fromMock } as any);
   return { updateMock, updateEqMock };
 }
 

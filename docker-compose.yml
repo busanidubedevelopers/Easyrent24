@@ -1,36 +1,107 @@
-# Local convenience only — this is NOT what AWS App Runner uses in
-# production (App Runner builds and runs the image directly from ECR).
-# This file exists so you can test the actual production container image
-# locally before pushing it, using your real .env.local values.
+# ============================================================================
+# EasyRent24 Docker Compose (Postgres + Next.js)
+# For local development and testing before AWS RDS deployment
 #
 # Usage:
 #   docker compose up --build
-#   curl http://localhost:3000/api/health
+#
+# Default demo credentials (password: Password123!):
+#   landlord@demo.com  /  tenant@demo.com  /  handyman@demo.com
+# ============================================================================
 
 services:
+  db:
+    image: postgres:17-alpine
+    container_name: easyrent-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: easyrent
+      POSTGRES_PASSWORD: easyrent_dev_password
+      POSTGRES_DB: easyrent
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U easyrent -d easyrent"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        # Baked into the client bundle at build time (NEXT_PUBLIC_* vars).
+        # App URL must match where the browser opens the app so CSRF and
+        # PayFast return URLs are correct. Change if you expose on a different
+        # host/port (e.g. ngrok URL for PayFast ITN testing).
+        NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+    container_name: easyrent-app
+    restart: unless-stopped
     ports:
       - "3000:3000"
+    volumes:
+      # Uploaded documents (ID scans, payslips, bank statements) — a named
+      # volume so they survive `docker compose restart`/`up -d` and aren't
+      # lost with the container's writable layer. Wiped only by `down -v`,
+      # same as the Postgres data below.
+      - uploads:/app/uploads
     environment:
-      # Server-only secrets are passed at RUNTIME, not baked into the image
-      # at build time — see the Dockerfile's comment on why NEXT_PUBLIC_*
-      # build args are the only thing safe to pass as --build-arg.
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      NODE_ENV: production
+
+      # ── Database ──────────────────────────────────────────────────────────
+      # IMPORTANT: hostname MUST be "db" (the Compose service name above),
+      # NOT "localhost". Inside the Docker network "localhost" resolves to
+      # the app container itself, not the Postgres container.
+      DATABASE_URL: postgresql://easyrent:easyrent_dev_password@db:5432/easyrent
+
+      # ── Auth ──────────────────────────────────────────────────────────────
+      # JWT secret used to sign/verify session cookies. Must be ≥32 chars.
+      # Both the API routes and the middleware read this — they must match.
+      JWT_SECRET: ${JWT_SECRET:-easyrent-super-secret-jwt-key-32ch-min!}
+
+      # ── App URL ───────────────────────────────────────────────────────────
+      # Server-side only (read at runtime — no rebuild needed to change it):
+      # CSRF guard, PayFast return/cancel/notify URLs, links in emails.
+      # For live PayFast this must be a public https URL PayFast can reach.
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+      # Where PayFast returns the shopper's browser (defaults to APP_URL). The public
+      # launcher sets this to http://localhost:3000 while APP_URL is the tunnel.
+      APP_BROWSER_URL: ${APP_BROWSER_URL:-}
+
+      # ── PayFast ───────────────────────────────────────────────────────────
+      # Set these in .env (never commit it). Without them the app falls back
+      # to PayFast's shared public sandbox account, which currently rejects
+      # signed payments — see backend/docs/ENVIRONMENT.md.
+      # demo = built-in EasyRent Pay checkout (no money moves); payfast = real PayFast
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-payfast}
       PAYFAST_MODE: ${PAYFAST_MODE:-sandbox}
-      PAYFAST_MERCHANT_ID: ${PAYFAST_MERCHANT_ID}
-      PAYFAST_MERCHANT_KEY: ${PAYFAST_MERCHANT_KEY}
-      PAYFAST_PASSPHRASE: ${PAYFAST_PASSPHRASE}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      PAYFAST_MERCHANT_ID: ${PAYFAST_MERCHANT_ID:-10000100}
+      PAYFAST_MERCHANT_KEY: ${PAYFAST_MERCHANT_KEY:-46f0cd694581a}
+      PAYFAST_PASSPHRASE: ${PAYFAST_PASSPHRASE:-}
+
+      # ── Optional: document checks + email ────────────────────────────────
+      # Read from your shell or a .env file next to this compose file. Unset,
+      # document checks return "not configured" and emails are skipped —
+      # everything else works.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+
+      # ── Optional: Rate Limiter (Upstash Redis) ────────────────────────────
+      # If unset the rate limiter falls back to a lightweight in-process store
+      # which is perfectly fine for a single-container demo. Set these only if
+      # you want persistent, distributed rate limiting across restarts.
+      # UPSTASH_REDIS_REST_URL: ""
+      # UPSTASH_REDIS_REST_TOKEN: ""
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  uploads:

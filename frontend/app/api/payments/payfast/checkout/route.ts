@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildPaymentRequest, PAYFAST_URLS, type PayfastMode } from "@backend/lib/payfast";
+import { APPLICATION_FEE_ZAR } from "@backend/lib/applications";
+import { browserReturnBase } from '@/lib/appUrl';
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,15 +12,15 @@ export async function POST(req: NextRequest) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const mode = (process.env.PAYFAST_MODE as PayfastMode) || "sandbox";
 
-    const amount = Number(body.amount || 250);
+    const amount = Number(body.amount || APPLICATION_FEE_ZAR);
     const mPaymentId = `DEMO-${Date.now()}`;
 
     const fields = buildPaymentRequest({
       merchantId,
       merchantKey,
       passphrase,
-      returnUrl: `${appUrl}/apply/payment-success?application_id=${mPaymentId}`,
-      cancelUrl: `${appUrl}/apply/payment-cancelled?application_id=${mPaymentId}`,
+      returnUrl: `${browserReturnBase(appUrl)}/apply/payment-success?application_id=${mPaymentId}`,
+      cancelUrl: `${browserReturnBase(appUrl)}/apply/payment-cancelled?application_id=${mPaymentId}`,
       notifyUrl: `${appUrl}/api/payments/payfast/notify`,
       mPaymentId,
       amount,

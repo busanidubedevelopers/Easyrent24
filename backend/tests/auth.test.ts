@@ -1,13 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   getAuthenticatedProfile,
   requireRole,
   requireAuthenticatedRole,
   UnauthorizedError,
   ForbiddenError,
+  signToken,
   type AuthenticatedProfile,
 } from '../lib/auth';
+import { PostgresClient } from '../lib/postgresClient';
 import { toErrorResponse } from '../lib/apiError';
+import * as db from '../lib/db';
 
 // Minimal mock of the subset of SupabaseClient these functions actually use.
 function mockClient(opts: { user: unknown; profile: unknown; profileError?: unknown }) {
@@ -56,6 +59,24 @@ describe('getAuthenticatedProfile', () => {
   });
 });
 
+describe('PostgresClient.auth.getUser', () => {
+  it('reads the token from the client instance instead of the auth wrapper', async () => {
+    const querySpy = vi.spyOn(db, 'query').mockResolvedValue({
+      rows: [{ id: 'u1', email: 'lee@example.com', full_name: 'Lee', role: 'landlord', phone: null, is_verified: true }],
+    } as any);
+
+    // A real signed session token — getUser verifies it before looking the user up.
+    const token = await signToken({ id: 'u1', email: 'lee@example.com', role: 'landlord' });
+    const client = new PostgresClient(token);
+    const result = await client.auth.getUser();
+
+    expect(result.error).toBeNull();
+    expect(result.data?.user?.id).toBe('u1');
+    expect(result.data?.user?.role).toBe('landlord');
+    querySpy.mockRestore();
+  });
+});
+
 describe('requireRole', () => {
   const landlord: AuthenticatedProfile = { id: 'u1', full_name: 'Lee', role: 'landlord', phone: null, is_verified: true };
   const tenant: AuthenticatedProfile = { id: 'u3', full_name: 'Tina', role: 'tenant', phone: null, is_verified: true };
@@ -83,5 +104,12 @@ describe('toErrorResponse', () => {
     expect(toErrorResponse(new UnauthorizedError()).status).toBe(401);
     expect(toErrorResponse(new ForbiddenError()).status).toBe(403);
     expect(toErrorResponse(new Error('boom')).status).toBe(500);
+  });
+
+  it('maps database connection errors to a 503 with a clear startup message', () => {
+    const result = toErrorResponse(new Error('connect ECONNREFUSED 127.0.0.1:5432'));
+    expect(result.status).toBe(503);
+    expect(result.body.code).toBe('DB_UNAVAILABLE');
+    expect(result.body.error).toContain('docker compose up -d db');
   });
 });

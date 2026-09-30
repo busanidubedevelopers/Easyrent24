@@ -1,0 +1,4 @@
+# Local secrets: PayFast live keys, JWT secret, API keys. Never commit.
+.env
+.env.*
+!.env.example

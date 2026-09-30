@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { getAuthenticatedProfile, ForbiddenError } from '@backend/lib/auth';
 import { toErrorResponse } from '@backend/lib/apiError';
 import { validatePropertyInput, isValidStatusTransition, PROPERTY_STATUSES, type PropertyStatus } from '@backend/lib/properties';
@@ -18,9 +18,9 @@ interface RouteParams {
  */
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
-  const supabase = await getSupabaseServerClient();
+  const db = await getServerDb();
 
-  const { data, error } = await supabase.from('properties').select('*').eq('id', id).maybeSingle();
+  const { data, error } = await db.from('properties').select('*').eq('id', id).maybeSingle();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -48,10 +48,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
 
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    const profile = await getAuthenticatedProfile(db);
 
-    const { data: existing, error: fetchError } = await supabase
+    const { data: existing, error: fetchError } = await db
       .from('properties')
       .select('landlord_id, status')
       .eq('id', id)
@@ -111,7 +111,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'No valid fields to update.' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('properties')
       .update(updates)
       .eq('id', id)
@@ -138,10 +138,10 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
 
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    const profile = await getAuthenticatedProfile(db);
 
-    const { data: existing, error: fetchError } = await supabase
+    const { data: existing, error: fetchError } = await db
       .from('properties')
       .select('landlord_id')
       .eq('id', id)
@@ -157,7 +157,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
       throw new ForbiddenError('You can only delete your own properties.');
     }
 
-    const { error } = await supabase.from('properties').delete().eq('id', id);
+    const { error } = await db.from('properties').delete().eq('id', id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

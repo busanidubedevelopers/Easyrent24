@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GET } from '../../app/api/health/route';
 
-vi.mock('../../../backend/lib/supabaseAdmin', () => ({
-  getSupabaseAdmin: vi.fn(),
+vi.mock('../../../backend/lib/adminDb', () => ({
+  getAdminDb: vi.fn(),
 }));
 
-const { getSupabaseAdmin } = await import('../../../backend/lib/supabaseAdmin');
+const { getAdminDb } = await import('../../../backend/lib/adminDb');
 
 /**
- * Build a mock Supabase admin client whose from().select().limit() chain
+ * Build a mock admin database client whose from().select().limit() chain
  * resolves to the given { data, error } result.  The health route does:
- *   supabase.from('profiles').select('id').limit(1)
+ *   db.from('profiles').select('id').limit(1)
  */
 function mockAdmin(result: { data: unknown; error: unknown }) {
-  vi.mocked(getSupabaseAdmin).mockReturnValue({
+  vi.mocked(getAdminDb).mockReturnValue({
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         limit: vi.fn().mockResolvedValue(result),
@@ -68,9 +68,9 @@ describe('GET /api/health', () => {
     expect(body.message).toBe('Connection refused');
   });
 
-  it('returns 500 with stage "config" when getSupabaseAdmin throws', async () => {
-    vi.mocked(getSupabaseAdmin).mockImplementation(() => {
-      throw new Error('SUPABASE_URL not configured');
+  it('returns 500 with stage "config" when getAdminDb throws', async () => {
+    vi.mocked(getAdminDb).mockImplementation(() => {
+      throw new Error('DATABASE_URL not configured');
     });
 
     const res = await GET();
@@ -79,6 +79,6 @@ describe('GET /api/health', () => {
     expect(res.status).toBe(500);
     expect(body.status).toBe('error');
     expect(body.stage).toBe('config');
-    expect(body.message).toBe('SUPABASE_URL not configured');
+    expect(body.message).toBe('DATABASE_URL not configured');
   });
 });

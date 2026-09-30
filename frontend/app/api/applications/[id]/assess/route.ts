@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { getAuthenticatedProfile, ForbiddenError } from '@backend/lib/auth';
 import { toErrorResponse } from '@backend/lib/apiError';
 import {
@@ -40,13 +40,13 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    const profile = await getAuthenticatedProfile(db);
 
-    const { data: application, error: fetchError } = await supabase
+    const { data: application, error: fetchError } = await db
       .from('applications')
       .select(
-        'id, id_number, monthly_income, documents, consent_credit, consent_id_check, consent_bank_statements, property_id, properties(landlord_id, price)'
+        'id, id_number, monthly_income, payslip_url, consent_credit, consent_id_check, consent_bank_statements, property_id'
       )
       .eq('id', id)
       .maybeSingle();
@@ -59,7 +59,24 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Application not found.' }, { status: 404 });
     }
 
-    const property = application.properties as unknown as { landlord_id: string; price: number } | null;
+    // This client wraps plain Postgres, not real Supabase/PostgREST — there's
+    // no relational-select support, so the property is a separate lookup
+    // rather than a nested `properties(...)` select.
+    let property: { landlord_id: string; price: number } | null = null;
+    if (application.property_id) {
+      const { data: prop, error: propError } = await db
+        .from('properties')
+        .select('landlord_id, price')
+        .eq('id', application.property_id)
+        .maybeSingle();
+
+      if (propError) {
+        console.error(`POST /api/applications/${id}/assess: property fetch error`, propError);
+        return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 });
+      }
+      property = prop;
+    }
+
     const isLandlord = property?.landlord_id === profile.id;
     const isAdmin = profile.role === 'admin';
 
@@ -89,14 +106,16 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
     const idResult = validateSAIdNumber(application.id_number);
     const affordability = calculateAffordability(Number(application.monthly_income), Number(property.price));
 
-    const documents = (application.documents as Record<string, string>) ?? {};
-    const bankStatementResult = documents.bank_statement
-      ? analyzeBankStatementStub(documents.bank_statement)
+    // The schema has no dedicated bank-statement field; the uploaded payslip
+    // is the closest document reference available, so it stands in as the
+    // input path for this stub.
+    const bankStatementResult = application.payslip_url
+      ? analyzeBankStatementStub(application.payslip_url)
       : null;
 
     const risk = computeRiskAssessment({ idValid: idResult.valid, affordability });
 
-    const { data: updated, error: updateError } = await supabase
+    const { data: updated, error: updateError } = await db
       .from('applications')
       .update({ risk_score: risk.riskScore, risk_level: risk.riskLevel })
       .eq('id', id)

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Building2, PaintBucket, Upload, Wrench, Sparkles, Loader2, MapPin } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
 
 type JobType = "handyman" | "cleaning";
 
@@ -47,34 +46,26 @@ export default function RequestServicePage() {
     setIsLoading(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const res = await fetch('/api/handyman/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          title: `New ${formData.category} request`,
+          description: formData.description,
+          category: formData.category,
+          location: formData.location,
+        }),
+      });
 
-      if (!user) {
-        alert("Please sign in to post a job.");
-        setIsLoading(false);
-        return;
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || `Request failed (${res.status})`);
       }
 
-      const { data, error } = await supabase
-        .from('handyman_jobs')
-        .insert([
-          {
-            poster_id: user.id,
-            title: `New ${formData.category} request`, // Auto-generated title
-            description: formData.description,
-            category: formData.category,
-            location: formData.location,
-            status: 'open'
-          }
-        ])
-        .select();
-
-      if (error) throw error;
-
-      // Redirect to the new job page (using returned ID)
-      const newJobId = data?.[0]?.id || "mock-id-123";
+      const json = await res.json();
+      const newJobId = json.job?.id || 'unknown';
       router.push(`/handyman/job/${newJobId}`);
-      
     } catch (err) {
       console.error("Error posting job:", err);
       alert(`Error posting job: ${(err as Error)?.message || "Unknown error"}`);
@@ -83,7 +74,7 @@ export default function RequestServicePage() {
   };
 
   return (
-    <div className="container max-w-3xl py-12 md:py-16">
+    <div className="container max-w-3xl pt-20 pb-12 md:pb-16">
       <div className="mb-8 md:mb-12 text-center">
         <h1 className="text-3xl font-bold tracking-tight md:text-4xl">Post a Job</h1>
         <p className="mt-2 text-muted-foreground">Describe your needs and receive competitive bids from verified professionals.</p>

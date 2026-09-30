@@ -1,19 +1,22 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { Building2, Check, ChevronLeft, ChevronRight, FileCheck, Landmark, ScanFace, Upload, User, FileText, Loader2 } from "lucide-react";
+import { Building2, Check, ChevronLeft, ChevronRight, FileCheck, Landmark, ScanFace, Upload, User, FileText, Loader2, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabaseClient";
+import { APPLICATION_FEE_ZAR } from "@backend/lib/applications";
+import { BudgetStep } from "@/components/apply/BudgetStep";
+import { db } from "@/lib/apiClient";
 
 import { useApplyStore } from "@/store/useApplyStore";
 
 const STEPS = [
   { id: 1, title: "Personal Details", icon: User },
   { id: 2, title: "Employment", icon: Building2 },
-  { id: 3, title: "Financials", icon: Landmark },
-  { id: 4, title: "Consent", icon: FileCheck },
+  { id: 3, title: "Budget", icon: Wallet },
+  { id: 4, title: "Financials", icon: Landmark },
+  { id: 5, title: "Consent", icon: FileCheck },
 ];
 
 function ApplyForm() {
@@ -56,35 +59,30 @@ function ApplyForm() {
     }
   };
 
-  const uploadDocument = async (file: File | null, pathPrefix: string): Promise<string | null> => {
+  /** Uploads one document to the application. Returns an error message, or null on success/no file. */
+  const uploadDocument = async (applicationId: string, file: File | null, documentType: string): Promise<string | null> => {
     if (!file) return null;
-    const filePath = `${pathPrefix}/${Date.now()}_${file.name}`;
-    const { data, error } = await supabase.storage.from('application-documents').upload(filePath, file);
-    if (error) {
-       console.error("Document upload error:", error);
-       return null;
-    }
-    return data.path;
+    const body = new FormData();
+    body.append('file', file);
+    body.append('document_type', documentType);
+    const res = await fetch(`/api/applications/${applicationId}/documents`, { method: 'POST', body });
+    if (res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    return `${file.name}: ${data.error || 'upload failed'}`;
   };
 
   const handleSubmit = async () => {
     setIsLoading(true);
     
     try {
-       const { data: userData, error: authError } = await supabase.auth.getUser();
+       const { data: userData, error: authError } = await db.auth.getUser();
        if (authError || !userData?.user) {
           alert("You must be logged in to submit an application.");
           setIsLoading(false);
           return;
        }
 
-       // 1. Upload Documents
-       const userId = userData.user.id;
-       await uploadDocument(formData.idFile, `${userId}/id`);
-       await uploadDocument(formData.payslipFile, `${userId}/payslip`);
-       // TODO: Upload Co-Applicant docs similarly if needed...
-
-       // 2. Prepare payload
+       // 1. Prepare payload
        const payload = {
           property_id: formData.propertyId, // Requires proper property UUID
           first_name: formData.firstName,
@@ -96,6 +94,14 @@ function ApplyForm() {
           job_title: formData.jobTitle,
           employment_type: formData.employmentType,
           monthly_income: formData.monthlyIncome ? parseFloat(formData.monthlyIncome) : null,
+          current_rent: formData.livingSituation === 'renting' && formData.currentRent ? parseFloat(formData.currentRent) : null,
+          living_situation: formData.livingSituation || null,
+          other_income: formData.otherIncome
+             .filter((r) => r.source && Number(r.amount) > 0)
+             .map((r) => ({ source: r.source, description: r.description || null, amount: Number(r.amount) })),
+          monthly_expenses: Object.fromEntries(
+             Object.entries(formData.expenses).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Number(v)])
+          ),
           bank_name: formData.bankName,
           account_number: formData.accountNumber,
           account_type: formData.accountType,
@@ -105,14 +111,19 @@ function ApplyForm() {
              idNumber: formData.coApplicant.idNumber,
              email: formData.coApplicant.email,
              phone: formData.coApplicant.phone,
+             employerName: formData.coApplicant.employerName,
+             monthlyIncome: formData.coApplicant.monthlyIncome ? parseFloat(formData.coApplicant.monthlyIncome) : null,
+             // The co-applicant's own consents gate automated checks of their documents.
+             consentCreditCheck: formData.coApplicant.consentCreditCheck,
+             consentIdVerification: formData.coApplicant.consentIdVerification,
+             consentBankStatements: formData.coApplicant.consentBankStatements,
           } : null,
           consent_credit: formData.consentCreditCheck,
           consent_id_check: formData.consentIdVerification,
           consent_bank_statements: formData.consentBankStatements,
-          // document paths could be stored in metadata if backend supported it, but we uploaded them to the bucket anyway
        };
 
-       // 3. Post to backend
+       // 2. Post to backend
        const res = await fetch('/api/applications', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -120,20 +131,100 @@ function ApplyForm() {
        });
 
        const resData = await res.json();
-       
+
        if (!res.ok) {
           alert(`Application Error: ${resData.error || 'Unknown error'}`);
           setIsLoading(false);
           return;
        }
 
+       // 3. Upload documents against the new application, so the landlord
+       // can see them and they can be read automatically.
+       const applicationId: string = resData.application.id;
+       const co = formData.hasCoApplicant ? formData.coApplicant : null;
+       const uploads: [File | null, string][] = [
+          [formData.idFile, 'id_document'],
+          [formData.payslipFile, 'payslip'],
+          [formData.bankStatementFile, 'bank_statement'],
+          [co?.idFile ?? null, 'co_id_document'],
+          [co?.payslipFile ?? null, 'co_payslip'],
+          [co?.bankStatementFile ?? null, 'co_bank_statement'],
+       ];
+       const attempted = uploads.filter(([file]) => file).length;
+       const failedUploads = (await Promise.all(
+          uploads.map(([file, type]) => uploadDocument(applicationId, file, type))
+       )).filter((e): e is string => e !== null);
+
+       // 4. Start reading the documents in the background — the landlord
+       // sees results when they open the application. Not awaited: it takes
+       // a while and the applicant doesn't need to wait for it.
+       if (failedUploads.length < attempted) {
+          fetch(`/api/applications/${applicationId}/extract`, {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: '{}',
+             keepalive: true,
+          }).catch(() => { /* landlord can re-run the check */ });
+       }
+
+       if (failedUploads.length > 0) {
+          alert(`Your application was submitted, but some documents could not be uploaded:\n${failedUploads.join('\n')}`);
+       }
+
        resetForm();
+       setSubmittedApplicationId(applicationId ?? null);
        setIsSubmitted(true);
+
+       // The R150 tenant fee paid at registration covers the application.
+       // Only a tenant who hasn't paid it is sent to pay it now — the
+       // landlord can't approve an unpaid application (enforced server-side).
+       if (applicationId && resData.application.payment_status !== 'paid') {
+         await payApplicationFee(applicationId);
+       }
     } catch (err) {
        console.error("Submission failed:", err);
        alert("An unexpected error occurred. Please try again.");
     } finally {
        setIsLoading(false);
+    }
+  };
+
+  const [submittedApplicationId, setSubmittedApplicationId] = useState<string | null>(null);
+  const [isRedirectingToPayment, setIsRedirectingToPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  const payApplicationFee = async (applicationId: string) => {
+    setIsRedirectingToPayment(true);
+    setPaymentError(null);
+    try {
+      const res = await fetch(`/api/applications/${applicationId}/pay`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok || !data.processUrl) {
+        throw new Error(data.error || 'Failed to start the payment');
+      }
+
+      // Same hidden-form auto-submit PayFast requires everywhere else in
+      // this app (see /checkout) — a GET redirect with query params isn't
+      // how PayFast's flow works.
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = data.processUrl;
+      for (const [key, value] of Object.entries(data.fields)) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = String(value);
+        form.appendChild(input);
+      }
+      document.body.appendChild(form);
+      form.submit();
+    } catch (err: unknown) {
+      console.error('Error starting application fee payment:', err);
+      setPaymentError(err instanceof Error ? err.message : 'Failed to start payment.');
+      setIsRedirectingToPayment(false);
     }
   };
 
@@ -151,19 +242,50 @@ function ApplyForm() {
                 </div>
              </div>
           </div>
-          
+
           <h1 className="mb-4 text-3xl font-bold tracking-tight">Application Submitted!</h1>
-          <p className="mb-8 text-muted-foreground">
-            Your rental application has been securely received. We will process your verification and notify you within 24 hours.
-          </p>
-          <div className="flex justify-center gap-4">
-            <Link 
-              href="/"
-              className="inline-flex h-10 items-center justify-center rounded-md bg-brand px-8 text-sm font-medium text-white shadow transition-colors hover:bg-brand/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              Back to Home
-            </Link>
-          </div>
+
+          {isRedirectingToPayment ? (
+            <>
+              <p className="mb-8 text-muted-foreground flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Redirecting you to secure payment for the application fee…
+              </p>
+            </>
+          ) : paymentError ? (
+            <>
+              <p className="mb-4 text-muted-foreground">
+                Your application was received, but the application fee payment couldn&apos;t start:
+              </p>
+              <p className="mb-8 text-sm text-red-600 dark:text-red-400">{paymentError}</p>
+              <p className="mb-4 text-xs text-muted-foreground">
+                Your application won&apos;t be reviewed until the R{APPLICATION_FEE_ZAR} fee is paid — the landlord
+                can&apos;t approve an unpaid application.
+              </p>
+              <div className="flex justify-center gap-4">
+                <button
+                  onClick={() => submittedApplicationId && payApplicationFee(submittedApplicationId)}
+                  className="inline-flex h-10 items-center justify-center rounded-md bg-brand px-8 text-sm font-medium text-white shadow transition-colors hover:bg-brand/90"
+                >
+                  Pay Application Fee
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="mb-8 text-muted-foreground">
+                Your rental application has been securely received. We will process your verification and notify you within 24 hours.
+              </p>
+              <div className="flex justify-center gap-4">
+                <Link
+                  href="/"
+                  className="inline-flex h-10 items-center justify-center rounded-md bg-brand px-8 text-sm font-medium text-white shadow transition-colors hover:bg-brand/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  Back to Home
+                </Link>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -514,7 +636,7 @@ function ApplyForm() {
               {formData.hasCoApplicant && <h3 className="font-bold text-lg mb-4 text-brand">Main Applicant</h3>}
               
               <div className="space-y-2">
-                <label htmlFor="employerName" className="text-sm font-medium leading-none">Employer Name</label>
+                <label htmlFor="employerName" className="text-sm font-medium leading-none">Employer Name (if employed)</label>
                  <div className="relative">
                    <Building2 className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <input
@@ -551,12 +673,15 @@ function ApplyForm() {
                     <option value="contract">Fixed Term Contract</option>
                     <option value="part-time">Part-time</option>
                     <option value="self-employed">Self Employed</option>
+                    <option value="not-employed">Not employed / at home</option>
+                    <option value="student">Student</option>
+                    <option value="pensioner">Pensioner</option>
                   </select>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="monthlyIncome" className="text-sm font-medium leading-none">Net Monthly Income (After Tax)</label>
+                <label htmlFor="monthlyIncome" className="text-sm font-medium leading-none">Gross Monthly Salary (Before Tax)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-3 text-sm text-muted-foreground">R</span>
                   <input
@@ -569,6 +694,7 @@ function ApplyForm() {
                   />
                 </div>
               </div>
+
               
               {/* Co-Applicant Employment */}
               {formData.hasCoApplicant && (
@@ -633,6 +759,21 @@ function ApplyForm() {
 
           {/* Step 3: Financial & Uploads */}
           {currentStep === 3 && (
+            <BudgetStep
+              livingSituation={formData.livingSituation}
+              currentRent={formData.currentRent}
+              otherIncome={formData.otherIncome}
+              expenses={formData.expenses}
+              onChange={(patch) => {
+                if (patch.livingSituation !== undefined) updateFormData("livingSituation", patch.livingSituation);
+                if (patch.currentRent !== undefined) updateFormData("currentRent", patch.currentRent);
+                if (patch.otherIncome !== undefined) updateFormData("otherIncome", patch.otherIncome);
+                if (patch.expenses !== undefined) updateFormData("expenses", patch.expenses);
+              }}
+            />
+          )}
+
+          {currentStep === 4 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                <div className="space-y-1">
                 <h2 className="text-xl font-semibold">Financial & Banking</h2>
@@ -694,13 +835,29 @@ function ApplyForm() {
                  <label className="flex h-[120px] w-full cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-muted-foreground/25 bg-muted/50 transition-colors hover:bg-muted relative">
                     <Upload className="mb-2 h-6 w-6 text-muted-foreground" />
                     <p className="text-xs text-muted-foreground">Drag & drop or click to upload PDF/Image</p>
-                    <input 
-                      type="file" 
-                      className="hidden" 
+                    <input
+                      type="file"
+                      accept="application/pdf,image/jpeg,image/png"
+                      className="hidden"
                       onChange={(e) => updateFormData("payslipFile", e.target.files?.[0] || null)}
                     />
                  </label>
                  <p className="text-[0.8rem] text-muted-foreground text-right">{formData.payslipFile ? formData.payslipFile.name : "No file selected"}</p>
+              </div>
+
+              <div className="space-y-2">
+                 <label className="text-sm font-medium leading-none">Upload Bank Statement (last 3 months)</label>
+                 <label className="flex h-[120px] w-full cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-muted-foreground/25 bg-muted/50 transition-colors hover:bg-muted relative">
+                    <Upload className="mb-2 h-6 w-6 text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">PDF or image, up to 8MB</p>
+                    <input
+                      type="file"
+                      accept="application/pdf,image/jpeg,image/png"
+                      className="hidden"
+                      onChange={(e) => updateFormData("bankStatementFile", e.target.files?.[0] || null)}
+                    />
+                 </label>
+                 <p className="text-[0.8rem] text-muted-foreground text-right">{formData.bankStatementFile ? formData.bankStatementFile.name : "No file selected"}</p>
               </div>
 
                {/* Co-Applicant Financials */}
@@ -757,13 +914,29 @@ function ApplyForm() {
                           <label className="flex h-[120px] w-full cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-muted-foreground/25 bg-muted/50 transition-colors hover:bg-muted relative">
                              <Upload className="mb-2 h-6 w-6 text-muted-foreground" />
                              <p className="text-xs text-muted-foreground">Drag & drop or click to upload PDF/Image</p>
-                             <input 
-                               type="file" 
-                               className="hidden" 
+                             <input
+                               type="file"
+                               accept="application/pdf,image/jpeg,image/png"
+                               className="hidden"
                                onChange={(e) => updateCoApplicantData("payslipFile", e.target.files?.[0] || null)}
                              />
                           </label>
                           <p className="text-[0.8rem] text-muted-foreground text-right">{formData.coApplicant.payslipFile ? formData.coApplicant.payslipFile.name : "No file selected"}</p>
+                       </div>
+
+                       <div className="space-y-2">
+                          <label className="text-sm font-medium leading-none">Co-Applicant Bank Statement (last 3 months)</label>
+                          <label className="flex h-[120px] w-full cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-muted-foreground/25 bg-muted/50 transition-colors hover:bg-muted relative">
+                             <Upload className="mb-2 h-6 w-6 text-muted-foreground" />
+                             <p className="text-xs text-muted-foreground">PDF or image, up to 8MB</p>
+                             <input
+                               type="file"
+                               accept="application/pdf,image/jpeg,image/png"
+                               className="hidden"
+                               onChange={(e) => updateCoApplicantData("bankStatementFile", e.target.files?.[0] || null)}
+                             />
+                          </label>
+                          <p className="text-[0.8rem] text-muted-foreground text-right">{formData.coApplicant.bankStatementFile ? formData.coApplicant.bankStatementFile.name : "No file selected"}</p>
                        </div>
                   </div>
                )}
@@ -771,7 +944,7 @@ function ApplyForm() {
           )}
 
           {/* Step 4: Consent */}
-          {currentStep === 4 && (
+          {currentStep === 5 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                <div className="space-y-1">
                 <h2 className="text-xl font-semibold">Consent & Authorization</h2>
@@ -948,7 +1121,8 @@ function ApplyForm() {
              onClick={handleNext}
              disabled={
                isLoading || 
-               (currentStep === 4 && (
+               (currentStep === 3 && !formData.livingSituation) ||
+               (currentStep === 5 && (
                  !formData.consentCreditCheck || !formData.consentIdVerification || !formData.consentBankStatements ||
                  (formData.hasCoApplicant && (!formData.coApplicant.consentCreditCheck || !formData.coApplicant.consentIdVerification || !formData.coApplicant.consentBankStatements))
                ))

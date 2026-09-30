@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@backend/lib/supabaseAdmin';
+import { getAdminDb } from '@backend/lib/adminDb';
 
 /**
  * GET /api/health
@@ -7,7 +7,7 @@ import { getSupabaseAdmin } from '@backend/lib/supabaseAdmin';
  * Basic health check used to confirm:
  *   1. The Next.js app can import shared logic from the sibling backend/
  *      folder (proves the @backend/* alias + externalDir wiring works).
- *   2. The service-role Supabase client can be constructed and can reach
+ *   2. The server database client can be constructed and can reach
  *      the database.
  *
  * This is also useful later as the health check endpoint AWS App Runner
@@ -15,8 +15,8 @@ import { getSupabaseAdmin } from '@backend/lib/supabaseAdmin';
  */
 export async function GET() {
   try {
-    const supabase = getSupabaseAdmin();
-    const { error } = await supabase.from('profiles').select('id').limit(1);
+    const db = getAdminDb();
+    const { error } = await db.from('profiles').select('id').limit(1);
 
     if (error) {
       return NextResponse.json(

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import crypto from 'crypto';
 import { phpUrlEncode, generateSignature, verifySignature, amountsMatch, buildPaymentRequest } from '../lib/payfast';
 
@@ -136,5 +136,24 @@ describe('buildPaymentRequest', () => {
   it('produces a signature that self-validates against its own fields', () => {
     const { signature, ...rest } = request;
     expect(verifySignature(rest, signature as string)).toBe(true);
+  });
+});
+
+describe('isPayfastSource', () => {
+  it('accepts the known PayFast subnets without a DNS lookup', async () => {
+    const { isPayfastSource } = await import('../lib/payfast');
+    expect(await isPayfastSource('41.74.179.193')).toBe(true);
+  });
+
+  it("accepts current addresses of PayFast's ITN hosts and rejects everything else", async () => {
+    vi.resetModules();
+    vi.doMock('dns', () => ({
+      promises: { resolve4: vi.fn(async (host: string) => (host === 'w2w.payfast.co.za' ? ['102.216.36.136'] : ['34.107.176.71'])) },
+    }));
+    const { isPayfastSource } = await import('../lib/payfast');
+    expect(await isPayfastSource('102.216.36.136, 10.0.0.1')).toBe(true);
+    expect(await isPayfastSource('203.0.113.9')).toBe(false);
+    expect(await isPayfastSource(null)).toBe(false);
+    vi.doUnmock('dns');
   });
 });

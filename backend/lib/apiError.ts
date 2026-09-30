@@ -2,6 +2,7 @@ import { UnauthorizedError, ForbiddenError } from './auth';
 import { ValidationError } from './security/validation';
 import { CsrfError } from './security/csrfGuard';
 import { logger } from './security/logger';
+import { isDatabaseUnavailableError, getDatabaseUnavailableMessage } from './db';
 
 export interface ErrorResponse {
   status: number;
@@ -38,6 +39,16 @@ export function toErrorResponse(err: unknown, requestId?: string): ErrorResponse
         error: err.message,
         code: 'VALIDATION_ERROR',
         details: err.details,
+      },
+    };
+  }
+
+  if (isDatabaseUnavailableError(err)) {
+    return {
+      status: 503,
+      body: {
+        error: getDatabaseUnavailableMessage(err),
+        code: 'DB_UNAVAILABLE',
       },
     };
   }

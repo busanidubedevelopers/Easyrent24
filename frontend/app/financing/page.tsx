@@ -32,7 +32,7 @@ function FinancingContent() {
   };
 
   return (
-    <div className="container max-w-2xl py-12 md:py-16">
+    <div className="container max-w-2xl pt-20 pb-12 md:pb-16">
        <div className="text-center mb-8">
           <div className="relative h-48 w-full max-w-md mx-auto mb-6 rounded-xl overflow-hidden shadow-lg">
              {/* eslint-disable-next-line @next/next/no-img-element */}

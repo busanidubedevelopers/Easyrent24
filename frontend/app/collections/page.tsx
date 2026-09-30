@@ -18,48 +18,20 @@ import {
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 
-// Mock Data for Tenants in Arrears
-const ARREARS_CASES = [
-  {
-    id: "case-101",
-    tenantName: "Michael Foster",
-    property: "Unit 404, The EasyLofts",
-    arrearsAmount: 14500,
-    daysOverdue: 45,
-    status: "Late", 
-    lastCommunication: "2026-01-25 (SMS Reminder)",
-    leaseEnd: "2026-11-30",
-    riskScore: "High",
-  },
-  {
-    id: "case-102",
-    tenantName: "Sarah Jenkins",
-    property: "12 Greenway Drive",
-    arrearsAmount: 8200,
-    daysOverdue: 12,
-    status: "Warning Sent",
-    lastCommunication: "2026-02-01 (Email)",
-    leaseEnd: "2026-06-30",
-    riskScore: "Medium",
-  },
-  {
-    id: "case-103",
-    tenantName: "David Nkosi",
-    property: "Flat 5, Rosebank Heights",
-    arrearsAmount: 32000,
-    daysOverdue: 95,
-    status: "Legal Action",
-    lastCommunication: "2026-01-10 (Letter of Demand)",
-    leaseEnd: "Month-to-Month",
-    riskScore: "Critical",
-  },
-];
+// Demo data is intentionally empty to avoid showing fake arrears during client walkthroughs.
+const ARREARS_CASES: Array<{
+  id: string;
+  tenantName: string;
+  property: string;
+  arrearsAmount: number;
+  daysOverdue: number;
+  status: string;
+  lastCommunication: string;
+  leaseEnd: string;
+  riskScore: string;
+}> = [];
 
-const COLLECTION_AGENTS = [
-  { id: 1, name: "SwiftRecover Legal", rate: "10%", rating: 4.8, specialized: "Evictions" },
-  { id: 2, name: "Metro Debt Collections", rate: "8%", rating: 4.5, specialized: "Soft Collections" },
-  { id: 3, name: "Titanium Enforcement", rate: "12%", rating: 4.9, specialized: "High Value" },
-];
+const COLLECTION_AGENTS: Array<{ id: number; name: string; rate: string; rating: number; specialized: string }> = [];
 
 export default function CollectionsPage() {
   const [selectedCase, setSelectedCase] = useState<string | null>(null);
@@ -95,7 +67,7 @@ export default function CollectionsPage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       {/* Header */}
-      <div className="bg-white dark:bg-slate-900 border-b border-border py-8">
+      <div className="bg-white dark:bg-slate-900 border-b border-border pt-20 pb-8">
          <div className="container mx-auto px-4">
             <h1 className="text-3xl font-bold tracking-tight mb-2">Collections & Evictions</h1>
             <p className="text-muted-foreground">Manage arrears, issue legal notices, and recover revenue efficiently.</p>
@@ -397,8 +369,6 @@ export default function CollectionsPage() {
                   </div>
                </div>
              ) : (
-               /* Empty State: Select a case */
-               /* Empty State: Select a case */
                <div className="h-full min-h-[400px] flex flex-col items-center justify-center border border-dashed border-border rounded-xl bg-slate-50/50 dark:bg-slate-900/50 p-8 text-center overflow-hidden relative">
                   <div className="relative h-40 w-40 mb-6 opacity-80 hover:scale-105 transition-transform duration-500">
                      <Image 
@@ -408,9 +378,9 @@ export default function CollectionsPage() {
                         className="object-contain"
                      />
                   </div>
-                  <h3 className="text-lg font-semibold mb-2">Select a Case to Analyze</h3>
+                  <h3 className="text-lg font-semibold mb-2">No active arrears</h3>
                   <p className="text-muted-foreground max-w-sm">
-                     Choose a tenant from the list to view detailed arrears info, risk scores, and initiate recovery workflows.
+                     This view is empty until a tenant payment issue appears in the live system.
                   </p>
                </div>
              )}
@@ -420,61 +390,44 @@ export default function CollectionsPage() {
           <div className="lg:col-span-4 space-y-4">
              <div className="flex items-center justify-between mb-2">
                 <h3 className="font-bold">Active Arrears ({ARREARS_CASES.length})</h3>
-                <button className="text-sm text-brand font-medium hover:underline">View All</button>
              </div>
              
-             <div className="space-y-3">
-                {ARREARS_CASES.map(c => (
-                   <div 
-                     key={c.id} 
-                     onClick={() => setSelectedCase(c.id)}
-                     className={cn(
-                        "p-4 rounded-xl border cursor-pointer transition-all hover:shadow-md",
-                        selectedCase === c.id 
-                           ? "bg-white dark:bg-slate-900 border-brand ring-1 ring-brand" 
-                           : "bg-white dark:bg-slate-900 border-border hover:border-brand/50"
-                     )}
-                   >
-                      <div className="flex justify-between items-start mb-2">
-                         <h4 className="font-semibold text-sm">{c.tenantName}</h4>
-                         <span className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">
-                           {c.daysOverdue} days
-                         </span>
-                      </div>
-                      <div className="text-muted-foreground text-xs mb-3 truncate">{c.property}</div>
-                      
-                      <div className="flex items-center justify-between pt-3 border-t border-border">
-                         <div>
-                            <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Arrears</div>
-                            <div className="font-bold text-sm">R {c.arrearsAmount.toLocaleString()}</div>
-                         </div>
-                         <ArrowRight className={cn("h-4 w-4 transition-transform", selectedCase === c.id ? "text-brand translate-x-1" : "text-muted-foreground")} />
-                      </div>
-                   </div>
-                ))}
-             </div>
-             
-             {/* Stats Card */}
-             <div className="bg-slate-900 text-white rounded-xl p-6 mt-6">
-                <h4 className="font-bold mb-4 flex items-center gap-2">
-                   <Gavel className="h-4 w-4 text-brand" />
-                   System Status
-                </h4>
-                <div className="space-y-4">
-                   <div className="flex justify-between items-center text-sm border-b border-slate-700 pb-2">
-                      <span className="text-slate-400">Total Arrears</span>
-                      <span className="font-bold">R 54,700</span>
-                   </div>
-                   <div className="flex justify-between items-center text-sm border-b border-slate-700 pb-2">
-                      <span className="text-slate-400">Avg. Recovery Time</span>
-                      <span className="font-bold">28 days</span>
-                   </div>
-                   <div className="flex justify-between items-center text-sm">
-                      <span className="text-slate-400">Success Rate</span>
-                      <span className="font-bold text-green-400">84%</span>
-                   </div>
-                </div>
-             </div>
+             {ARREARS_CASES.length > 0 ? (
+               <div className="space-y-3">
+                  {ARREARS_CASES.map(c => (
+                     <div 
+                       key={c.id} 
+                       onClick={() => setSelectedCase(c.id)}
+                       className={cn(
+                          "p-4 rounded-xl border cursor-pointer transition-all hover:shadow-md",
+                          selectedCase === c.id 
+                             ? "bg-white dark:bg-slate-900 border-brand ring-1 ring-brand" 
+                             : "bg-white dark:bg-slate-900 border-border hover:border-brand/50"
+                       )}
+                     >
+                        <div className="flex justify-between items-start mb-2">
+                           <h4 className="font-semibold text-sm">{c.tenantName}</h4>
+                           <span className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">
+                             {c.daysOverdue} days
+                           </span>
+                        </div>
+                        <div className="text-muted-foreground text-xs mb-3 truncate">{c.property}</div>
+                        
+                        <div className="flex items-center justify-between pt-3 border-t border-border">
+                           <div>
+                              <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Arrears</div>
+                              <div className="font-bold text-sm">R {c.arrearsAmount.toLocaleString()}</div>
+                           </div>
+                           <ArrowRight className={cn("h-4 w-4 transition-transform", selectedCase === c.id ? "text-brand translate-x-1" : "text-muted-foreground")} />
+                        </div>
+                     </div>
+                  ))}
+               </div>
+             ) : (
+               <div className="rounded-xl border border-dashed border-border bg-white dark:bg-slate-900 p-6 text-sm text-muted-foreground">
+                 No tenant arrears are currently active.
+               </div>
+             )}
           </div>
 
         </div>

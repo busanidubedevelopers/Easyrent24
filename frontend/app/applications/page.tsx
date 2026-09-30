@@ -2,32 +2,35 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { 
-  AlertCircle, 
-  AlertTriangle, 
-  Briefcase, 
+import { db } from "@/lib/apiClient";
+import { 
+  AlertTriangle, 
   Check, 
-  CheckCircle2, 
-  Download, 
-  FileText,
-  Landmark,
+  CheckCircle2, 
+  FileText,
   Mail,
   Search, 
-  Send,
-  Shield,
-  ShieldCheck, 
-  User,
-  UserCheck,
-  X,
-  XCircle
+  Send,
+  User,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { VerificationPanel } from "@/components/VerificationPanel";
 
-// --- Mock Applications Data ---
-// --- Types ---
+interface PropertyCatalogItem {
+  id: string;
+  title: string;
+  address: string;
+  price: number | string | null;
+  status: string;
+  property_type?: string | null;
+  landlord_id?: string;
+  created_at?: string;
+}
+
 interface Application {
   id: string;
+  property_id?: string | null;
   applicant: {
     name: string;
     idNumber: string;
@@ -39,22 +42,14 @@ interface Application {
   score: number;
   risk: string;
   submissionDate: string;
-  // Mocking verification details as they aren't fully in DB yet
-  verification: {
-    details: { status: string; source: string; verifiedAt: string };
-    credit: { score: number; status: string; bureau: string; fraudIndicators: string; judgements: number };
-    bank: { status: string; incomeMatch: boolean; fraudCheck: string; statementsProvided: boolean; statementsSource: string; monthsAnalyzed: number };
-    employment: { status: string; employer: string; tenure: string };
-    affordability: { ratio: number; status: string; netIncome: number; totalExpenses: number; disposableIncome: number; analysis: string };
-  };
 }
 
 export default function ApplicationsPage() {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const router = useRouter();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isLoading, setIsLoading] = useState(true);
   const [applications, setApplications] = useState<Application[]>([]);
+  const [properties, setProperties] = useState<PropertyCatalogItem[]>([]);
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
 
@@ -76,70 +71,111 @@ EasyRent Management`;
 
   useEffect(() => {
     async function fetchApplications() {
-        try {
-          const { data: authData, error: authError } = await supabase.auth.getUser();
+      try {
+        const { data: authData, error: authError } = await db.auth.getUser();
 
-          let dbApps: Application[] = [];
+        const [propertiesRes, applicationsRes] = await Promise.all([
+          fetch('/api/properties?limit=50'),
+          authError || !authData?.user ? Promise.resolve(null) : fetch('/api/applications')
+        ]);
 
-          if (!authError && authData?.user) {
-             const user = authData.user;
-             const { data, error } = await supabase
-                .from('applications')
-                .select(`
-                   *,
-                   properties!inner (
-                      title,
-                      address,
-                      landlord_id
-                   )
-                `)
-                .eq('properties.landlord_id', user.id);
+        const propertyData = propertiesRes.ok ? ((await propertiesRes.json()) as { properties?: PropertyCatalogItem[] }).properties ?? [] : [];
+        setProperties(propertyData);
 
-             if (!error && data) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                dbApps = data.map((item: any) => {
-                   const score = item.risk_score || 650;
-                   let risk = item.risk_level || "Unknown";
-                   if (risk === "unknown") {
-                      risk = score >= 650 ? "Low" : score >= 600 ? "Medium" : "High";
-                   }
-                   risk = risk.charAt(0).toUpperCase() + risk.slice(1);
+        let dbApps: Application[] = [];
 
-                   return {
-                      id: item.id,
-                      applicant: {
-                         name: `${item.first_name} ${item.last_name}`,
-                         idNumber: item.id_number || "N/A",
-                         email: item.email || "",
-                         phone: item.phone || "",
-                      },
-                      property: item.properties?.title || "Unknown Property",
-                      status: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : "Pending",
-                      score: score,
-                      risk: risk,
-                      submissionDate: new Date(item.created_at).toISOString().split('T')[0],
-                      verification: {
-                         details: { status: "Verified", source: "Dept Home Affairs", verifiedAt: new Date().toISOString().split('T')[0] },
-                         credit: { score: score, status: score > 600 ? "Good" : "Poor", bureau: "TransUnion", fraudIndicators: "None detected", judgements: 0 },
-                         bank: { status: "Verified", incomeMatch: true, fraudCheck: "Passed", statementsProvided: true, statementsSource: "Direct Integration (BankServ)", monthsAnalyzed: 3 },
-                         employment: { status: "Confirmed", employer: item.employer_name || "Unknown", tenure: "Unknown" },
-                         affordability: { ratio: 28, status: "Pass", netIncome: 45000, totalExpenses: 28000, disposableIncome: 17000, analysis: "Applicant has stable cash flow over the last 3 months with sufficient disposable income for rent." }
-                      }
-                   };
-                });
-             }
+        if (applicationsRes && applicationsRes.ok) {
+          const payload = (await applicationsRes.json()) as { applications?: Array<Record<string, unknown>> };
+          const applicationRows = payload.applications ?? [];
+
+          dbApps = applicationRows.map((item: Record<string, unknown>) => {
+            const property = propertyData.find((entry) => entry.id === item.property_id);
+            const score = Number(item.risk_score ?? 650);
+            let risk = String(item.risk_level ?? 'unknown');
+            if (risk === 'unknown') {
+              risk = score >= 650 ? 'Low' : score >= 600 ? 'Medium' : 'High';
+            }
+            const displayStatus = String(item.status ?? 'pending')
+              .replace(/_/g, ' ')
+              .replace(/\b\w/g, (char) => char.toUpperCase());
+
+            return {
+              id: String(item.id ?? crypto.randomUUID()),
+              property_id: typeof item.property_id === 'string' ? item.property_id : null,
+              // Assessed below (via POST .../assess) whenever the DB hasn't scored
+              // this application yet — this flag decides which ones get assessed.
+              _unassessed: item.risk_score === null || item.risk_score === undefined,
+              applicant: {
+                name: `${String(item.first_name ?? '')} ${String(item.last_name ?? '')}`.trim() || 'Unknown Applicant',
+                idNumber: String(item.id_number ?? 'N/A'),
+                email: String(item.email ?? ''),
+                phone: String(item.phone ?? ''),
+              },
+              property: property?.title || property?.address || 'Unknown Property',
+              status:
+                displayStatus === 'Pending' || displayStatus === 'Reviewing'
+                  ? 'Ready for Review'
+                  : displayStatus === 'Approved'
+                    ? 'Approved'
+                    : displayStatus === 'Declined'
+                      ? 'Declined'
+                      : displayStatus,
+              score,
+              risk: risk.charAt(0).toUpperCase() + risk.slice(1),
+              submissionDate: item.created_at ? new Date(String(item.created_at)).toISOString().split('T')[0] : 'N/A',
+            };
+          });
+
+          // Run the real risk assessment (backend/lib/creditCheck.ts — SA ID
+          // validation + rent/income affordability) for any application the DB
+          // hasn't scored yet, so the console shows the live applicant's actual
+          // numbers rather than the pre-assessment placeholder above. Runs
+          // silently in parallel; a failure just leaves that row on the
+          // placeholder rather than blocking the page.
+          const toAssess = dbApps.filter((app) => (app as unknown as { _unassessed?: boolean })._unassessed);
+          if (toAssess.length > 0) {
+            const assessedById = new Map<string, { application: Record<string, unknown>; assessment: { risk: { riskScore: number; riskLevel: string } } }>();
+            await Promise.all(
+              toAssess.map(async (app) => {
+                try {
+                  const res = await fetch(`/api/applications/${app.id}/assess`, { method: 'POST' });
+                  if (res.ok) {
+                    assessedById.set(app.id, await res.json());
+                  }
+                } catch (err) {
+                  console.error(`Assessment failed for application ${app.id}:`, err);
+                }
+              })
+            );
+
+            if (assessedById.size > 0) {
+              dbApps = dbApps.map((app) => {
+                const result = assessedById.get(app.id);
+                if (!result) return app;
+
+                // Document-based checks (ID, income, affordability) live in the
+                // VerificationPanel; only the credit risk score comes from here.
+                const { riskScore, riskLevel } = result.assessment.risk;
+
+                return {
+                  ...app,
+                  score: riskScore,
+                  risk: riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1),
+                };
+              });
+            }
           }
+        }
 
-          setApplications(dbApps);
-          if (dbApps.length > 0) {
-             setSelectedAppId(dbApps[0].id);
-          }
-
-       } catch (err) {
-          console.error("Error fetching applications:", err);
-       } finally {
-          setIsLoading(false);
-       }
+        setApplications(dbApps);
+        if (dbApps.length > 0) {
+          setSelectedAppId(dbApps[0].id);
+        }
+      } catch (err) {
+        console.error('Error fetching applications:', err);
+      } finally {
+        setIsLoading(false);
+      }
     }
 
     fetchApplications();
@@ -148,44 +184,28 @@ EasyRent Management`;
   // Key Stats
   const stats = {
     total: applications.length,
-    pending: applications.filter(a => a.status === "Ready for Review").length,
-    approved: applications.filter(a => a.status === "Approved").length,
-    declined: applications.filter(a => a.status === "Declined").length,
+    pending: applications.filter(a => a.status === 'Ready for Review').length,
+    approved: applications.filter(a => a.status === 'Approved').length,
+    declined: applications.filter(a => a.status === 'Declined').length,
   };
 
-  const filteredApps = applications.filter(app => 
+  const filteredApps = applications.filter(app =>
     app.applicant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     app.property.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const filteredProperties = properties.filter(property =>
+    property.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    property.address?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (property.property_type ?? '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   const selectedApp = applications.find(a => a.id === selectedAppId);
 
-  const handleApprove = async () => {
-    if (selectedApp) {
-       try {
-          const res = await fetch(`/api/applications/${selectedApp.id}`, {
-             method: 'PATCH',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ status: 'approved' })
-          });
-
-          if (!res.ok) {
-             const errorData = await res.json();
-             throw new Error(errorData.error || "Failed to approve application");
-          }
-
-          // Update state locally
-          setApplications(prev => prev.map(app => 
-            app.id === selectedApp.id ? { ...app, status: "Approved" } : app
-          ));
-          
-          setNotification(`Application for ${selectedApp.applicant.name} approved successfully.`);
-          setTimeout(() => setNotification(null), 3500);
-       } catch (err: unknown) {
-          console.error("Error approving application:", err);
-          alert(`Failed to approve application: ${err instanceof Error ? err.message : 'Unknown error'}`);
-       }
-    }
+  // Approval happens when the landlord sends the lease (/applications/lease/[id]),
+  // after setting the terms — the send step also enforces the paid application fee.
+  const handleApprove = () => {
+    if (selectedApp) router.push(`/applications/lease/${selectedApp.id}`);
   };
 
   const handleDecline = () => {
@@ -232,7 +252,7 @@ EasyRent Management`;
       )}
 
       {/* Header */}
-      <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-border py-12 relative overflow-hidden">
+      <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-border pt-20 pb-12 relative overflow-hidden">
          <div className="absolute inset-0 bg-gradient-to-r from-brand/5 to-indigo-400/5 dark:from-brand/10 dark:to-indigo-400/10 pointer-events-none" />
          <div className="container mx-auto px-4 relative z-10">
             <h1 className="text-4xl font-extrabold tracking-tight mb-2 text-gradient">Tenant Applications</h1>
@@ -285,9 +305,32 @@ EasyRent Management`;
              
              <div className="space-y-3">
                 {filteredApps.length === 0 ? (
-                   <div className="p-6 text-center border rounded-2xl glass text-muted-foreground text-sm">
-                      No applications found.
-                   </div>
+                   filteredProperties.length > 0 ? (
+                     <div className="space-y-3">
+                       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground px-1">Property catalog</div>
+                       {filteredProperties.slice(0, 6).map((property) => (
+                         <div key={property.id} className="p-4 rounded-2xl border border-border/80 bg-white dark:bg-slate-900 shadow-sm">
+                           <div className="flex items-start justify-between gap-3 mb-2">
+                             <div>
+                               <h4 className="font-bold text-base">{property.title}</h4>
+                               <div className="text-sm text-muted-foreground mt-1">{property.address}</div>
+                             </div>
+                             <span className="text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-wider bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                               {property.status}
+                             </span>
+                           </div>
+                           <div className="flex items-center justify-between text-sm">
+                             <span className="font-semibold text-brand">R {Number(property.price ?? 0).toLocaleString()}</span>
+                             <span className="text-muted-foreground">{property.property_type ?? 'Property'}</span>
+                           </div>
+                         </div>
+                       ))}
+                     </div>
+                   ) : (
+                     <div className="p-6 text-center border rounded-2xl glass text-muted-foreground text-sm">
+                       No applications or properties found.
+                     </div>
+                   )
                 ) : (
                    filteredApps.map((app, idx) => (
                       <div 
@@ -353,7 +396,7 @@ EasyRent Management`;
                            className="flex-1 sm:flex-none bg-brand text-white hover:bg-brand/90 hover:shadow-lg hover:shadow-brand/20 px-8 py-2 rounded-full text-sm font-bold transition-all flex items-center justify-center gap-2 hover:-translate-y-0.5"
                         >
                            <CheckCircle2 className="h-4 w-4" />
-                           Approve Tenant
+                           Approve &amp; Generate Lease
                         </button>
                      </div>
                   </div>
@@ -381,196 +424,12 @@ EasyRent Management`;
                                     {selectedApp.score}
                                  </div>
                               </div>
-                              <div className="w-px h-16 bg-border/60 hidden md:block"></div>
-                              <div className="text-center">
-                                 <div className="text-xs text-muted-foreground uppercase tracking-widest font-bold mb-2">Affordability</div>
-                                 <div className={cn(
-                                    "text-4xl font-black tracking-tighter drop-shadow-sm",
-                                    selectedApp.verification.affordability.ratio <= 30 ? "text-green-600" :
-                                    selectedApp.verification.affordability.ratio <= 40 ? "text-yellow-600" : "text-red-600"
-                                 )}>
-                                    {selectedApp.verification.affordability.ratio}%
-                                 </div>
-                              </div>
                            </div>
                         </div>
                      </div>
 
-                     {/* Report Details */}
                      <div className="p-6 md:p-8 bg-slate-50/30 dark:bg-slate-950/30">
-                        <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-                           <ShieldCheck className="h-6 w-6 text-brand" />
-                           Comprehensive Risk Report
-                        </h3>
-                        
-                        <div className="grid gap-6 md:grid-cols-2">
-                           
-                           {/* 1. Identity Verification */}
-                           <div className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-border/60 shadow-sm transition-all duration-300 hover:shadow-md hover:border-brand/30">
-                              <div className="flex justify-between items-start mb-4">
-                                 <div className="flex items-center gap-3">
-                                    <div className="bg-blue-100 dark:bg-blue-900/30 p-2.5 rounded-lg text-blue-600">
-                                       <UserCheck className="h-5 w-5" />
-                                    </div>
-                                    <div className="font-bold text-base">Identity Verification</div>
-                                 </div>
-                                 {selectedApp.verification.details.status === "Verified" ? (
-                                    <CheckCircle2 className="h-6 w-6 text-green-500" />
-                                 ) : (
-                                    <XCircle className="h-6 w-6 text-red-500" />
-                                 )}
-                              </div>
-                              <div className="space-y-3 text-sm">
-                                 <div className="flex justify-between items-center border-b border-border/50 pb-2">
-                                    <span className="text-muted-foreground font-medium">Source</span>
-                                    <span className="font-semibold text-right">{selectedApp.verification.details.source}</span>
-                                 </div>
-                                 <div className="flex justify-between items-center">
-                                    <span className="text-muted-foreground font-medium">Status</span>
-                                    <span className="font-bold bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">{selectedApp.verification.details.status}</span>
-                                 </div>
-                              </div>
-                           </div>
-
-                           {/* 2. Credit Bureau Check */}
-                           <div className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-border/60 shadow-sm transition-all duration-300 hover:shadow-md hover:border-brand/30 md:col-span-2 lg:col-span-1">
-                              <div className="flex justify-between items-start mb-4">
-                                 <div className="flex items-center gap-3">
-                                    <div className="bg-purple-100 dark:bg-purple-900/30 p-2.5 rounded-lg text-purple-600">
-                                       <Shield className="h-5 w-5" />
-                                    </div>
-                                    <div className="font-bold text-base">Credit Bureau Summary</div>
-                                 </div>
-                                 {selectedApp.risk === "Low" || selectedApp.risk === "Medium" ? (
-                                    <CheckCircle2 className="h-6 w-6 text-green-500" />
-                                 ) : (
-                                    <AlertTriangle className="h-6 w-6 text-yellow-500" />
-                                 )}
-                              </div>
-                              <div className="space-y-3 text-sm">
-                                 <div className="flex justify-between items-center border-b border-border/50 pb-2">
-                                    <span className="text-muted-foreground font-medium">Bureau</span>
-                                    <span className="font-semibold">{selectedApp.verification.credit.bureau}</span>
-                                 </div>
-                                 <div className="flex justify-between items-center border-b border-border/50 pb-2">
-                                    <span className="text-muted-foreground font-medium">Fraud Indicators</span>
-                                    <span className={selectedApp.verification.credit.fraudIndicators.includes("None") || selectedApp.verification.credit.fraudIndicators.includes("Clear") ? "text-green-600 font-bold bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded" : "text-red-600 font-bold bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded"}>{selectedApp.verification.credit.fraudIndicators}</span>
-                                 </div>
-                                 <div className="flex justify-between items-center">
-                                    <span className="text-muted-foreground font-medium">Credit Judgements</span>
-                                    <span className={selectedApp.verification.credit.judgements === 0 ? "text-green-600 font-bold bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded" : "text-red-600 font-bold bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded"}>{selectedApp.verification.credit.judgements} Found</span>
-                                 </div>
-                                 <div className="pt-3 mt-3 border-t border-border flex justify-between items-center">
-                                    <span className="text-muted-foreground font-medium">Full Report</span>
-                                    <button className="text-brand hover:text-brand/80 font-bold flex items-center gap-1.5 transition-colors bg-brand/5 px-3 py-1.5 rounded-md hover:bg-brand/10">Download PDF <Download className="h-4 w-4" /></button>
-                                 </div>
-                              </div>
-                           </div>
-
-                           {/* 3. Bank & Affordability Analysis */}
-                           <div className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-border/60 shadow-sm transition-all duration-300 hover:shadow-md hover:border-brand/30 md:col-span-2">
-                              <div className="flex justify-between items-start mb-4">
-                                 <div className="flex items-center gap-3">
-                                    <div className="bg-teal-100 dark:bg-teal-900/30 p-2.5 rounded-lg text-teal-600">
-                                       <Landmark className="h-5 w-5" />
-                                    </div>
-                                    <div className="font-bold text-base">Bank & Affordability Analysis</div>
-                                 </div>
-                                 {selectedApp.verification.bank.status === "Verified" ? (
-                                    <CheckCircle2 className="h-6 w-6 text-green-500" />
-                                 ) : (
-                                    <AlertCircle className="h-6 w-6 text-red-500" />
-                                 )}
-                              </div>
-                              <div className="grid md:grid-cols-2 gap-8 text-sm">
-                                 <div className="space-y-3">
-                                    <div className="flex justify-between items-center border-b border-border/50 pb-2">
-                                       <span className="text-muted-foreground font-medium">Statements</span>
-                                       <span className="font-semibold">{selectedApp.verification.bank.monthsAnalyzed} Months ({selectedApp.verification.bank.statementsSource})</span>
-                                    </div>
-                                    <div className="flex justify-between items-center border-b border-border/50 pb-2">
-                                       <span className="text-muted-foreground font-medium">Income Verified</span>
-                                       <span className={cn("font-bold px-2 py-0.5 rounded", selectedApp.verification.bank.incomeMatch ? "text-green-600 bg-green-50 dark:bg-green-900/20" : "text-red-600 bg-red-50 dark:bg-red-900/20")}>
-                                          {selectedApp.verification.bank.incomeMatch ? "Yes (Matches)" : "No Match"}
-                                       </span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                       <span className="text-muted-foreground font-medium">Fraud Check</span>
-                                       <span className="font-semibold">{selectedApp.verification.bank.fraudCheck}</span>
-                                    </div>
-                                    <div className="pt-3 mt-3 border-t border-border">
-                                       <button className="text-brand hover:text-brand/80 font-bold flex items-center gap-1.5 transition-colors bg-brand/5 px-3 py-1.5 rounded-md hover:bg-brand/10 w-fit">View Uploaded Statements <FileText className="h-4 w-4" /></button>
-                                    </div>
-                                 </div>
-                                 <div className="space-y-3 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-border/60 shadow-inner">
-                                    <div className="flex justify-between items-center">
-                                       <span className="text-muted-foreground font-medium">Avg Net Income</span>
-                                       <span className="font-black text-green-600 text-base">R {selectedApp.verification.affordability.netIncome.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                       <span className="text-muted-foreground font-medium">Avg Total Expenses</span>
-                                       <span className="font-black text-red-600 text-base">R {selectedApp.verification.affordability.totalExpenses.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center border-t border-border/80 pt-2 mt-2">
-                                       <span className="font-bold text-base">Disposable Income</span>
-                                       <span className="text-brand font-black text-lg">R {selectedApp.verification.affordability.disposableIncome.toLocaleString()}</span>
-                                    </div>
-                                    <div className="mt-3 relative">
-                                       <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand rounded-full"></div>
-                                       <p className="text-xs text-muted-foreground pl-3 italic leading-relaxed">
-                                          &ldquo;{selectedApp.verification.affordability.analysis}&rdquo;
-                                       </p>
-                                    </div>
-                                 </div>
-                              </div>
-                           </div>
-
-                           {/* 4. Employment */}
-                           <div className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-border/60 shadow-sm transition-all duration-300 hover:shadow-md hover:border-brand/30">
-                              <div className="flex justify-between items-start mb-4">
-                                 <div className="flex items-center gap-3">
-                                    <div className="bg-orange-100 dark:bg-orange-900/30 p-2.5 rounded-lg text-orange-600">
-                                       <Briefcase className="h-5 w-5" />
-                                    </div>
-                                    <div className="font-bold text-base">Employment</div>
-                                 </div>
-                                 <div className="text-xs font-bold bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-full text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                                    {selectedApp.verification.employment.status}
-                                 </div>
-                              </div>
-                              <div className="space-y-3 text-sm">
-                                 <div className="flex justify-between items-center border-b border-border/50 pb-2">
-                                    <span className="text-muted-foreground font-medium">Employer</span>
-                                    <span className="font-semibold text-right">{selectedApp.verification.employment.employer}</span>
-                                 </div>
-                                 <div className="flex justify-between items-center">
-                                    <span className="text-muted-foreground font-medium">Tenure</span>
-                                    <span className="font-semibold bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded border border-border/50">{selectedApp.verification.employment.tenure}</span>
-                                 </div>
-                              </div>
-                           </div>
-
-                        </div>
-
-                        {/* Recommendation */}
-                        <div className="mt-8 p-5 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50/50 dark:from-blue-900/20 dark:to-indigo-900/10 dark:border-blue-900/50 shadow-sm relative overflow-hidden">
-                            <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-                            <h4 className="font-black text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
-                               <ShieldCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                               System Recommendation
-                            </h4>
-                            <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed font-medium">
-                               Based on the aggregated data, {selectedApp.applicant.name} is classified as a <strong className={cn(
-                                  "px-2 py-0.5 rounded-md mx-1",
-                                  selectedApp.risk === 'Low' ? "bg-green-200 text-green-900 dark:bg-green-900/50 dark:text-green-100" :
-                                  selectedApp.risk === 'Medium' ? "bg-yellow-200 text-yellow-900 dark:bg-yellow-900/50 dark:text-yellow-100" : "bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-red-100"
-                               )}>{selectedApp.risk} Risk</strong> tenant. 
-                               {selectedApp.risk === 'Low' && " All checks passed with no adverse indicators. Approval is highly recommended."}
-                               {selectedApp.risk === 'Medium' && " Income is verified but affordability ratio is slightly elevated. Consider requesting a higher deposit or co-signer if proceeding."}
-                               {selectedApp.risk === 'High' && " Multiple adverse indicators found. Verify adverse reports thoroughly before proceeding."}
-                            </p>
-                        </div>
-
+                        <VerificationPanel applicationId={selectedApp.id} />
                      </div>
                   </div>
                </div>

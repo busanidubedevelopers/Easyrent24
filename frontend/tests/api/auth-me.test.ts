@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { NextRequest } from 'next/server';
 import { GET } from '../../app/api/auth/me/route';
 import { UnauthorizedError } from '../../../backend/lib/auth';
 
-// Route imports @/lib/supabaseServer and @backend/lib/auth.
+// The route takes a NextRequest it never reads (auth comes from the cookie via
+// the mocked getAuthenticatedProfile), so a bare request is enough here.
+const makeRequest = () => new NextRequest('http://localhost:3000/api/auth/me');
+
+// Route imports @/lib/serverDb and @backend/lib/auth.
 // We mock both so no real Supabase connection is needed.
-vi.mock('../../lib/supabaseServer', () => ({
-  getSupabaseServerClient: vi.fn(),
+vi.mock('../../lib/serverDb', () => ({
+  getServerDb: vi.fn(),
 }));
 
 vi.mock('../../../backend/lib/auth', async (importOriginal) => {
@@ -15,7 +20,7 @@ vi.mock('../../../backend/lib/auth', async (importOriginal) => {
 });
 
 // Pull the mocked functions out once so each test can configure them.
-const { getSupabaseServerClient } = await import('../../lib/supabaseServer');
+const { getServerDb } = await import('../../lib/serverDb');
 const { getAuthenticatedProfile } = await import('../../../backend/lib/auth');
 
 const mockProfile = {
@@ -29,14 +34,14 @@ const mockProfile = {
 beforeEach(() => {
   vi.clearAllMocks();
   // Default: return a dummy client object; tests override getAuthenticatedProfile directly.
-  vi.mocked(getSupabaseServerClient).mockResolvedValue({} as any);
+  vi.mocked(getServerDb).mockResolvedValue({} as any);
 });
 
 describe('GET /api/auth/me', () => {
   it('returns 200 with the authenticated profile', async () => {
     vi.mocked(getAuthenticatedProfile).mockResolvedValue(mockProfile);
 
-    const res = await GET();
+    const res = await GET(makeRequest());
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -48,7 +53,7 @@ describe('GET /api/auth/me', () => {
       new UnauthorizedError('You must be signed in to do this.')
     );
 
-    const res = await GET();
+    const res = await GET(makeRequest());
     const body = await res.json();
 
     expect(res.status).toBe(401);
@@ -60,7 +65,7 @@ describe('GET /api/auth/me', () => {
       new UnauthorizedError('No profile found for this account.')
     );
 
-    const res = await GET();
+    const res = await GET(makeRequest());
     const body = await res.json();
 
     expect(res.status).toBe(401);
@@ -72,7 +77,7 @@ describe('GET /api/auth/me', () => {
       new Error('pg: connection refused')
     );
 
-    const res = await GET();
+    const res = await GET(makeRequest());
     const body = await res.json();
 
     expect(res.status).toBe(500);

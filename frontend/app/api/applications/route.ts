@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { getAuthenticatedProfile } from '@backend/lib/auth';
 import { toErrorResponse } from '@backend/lib/apiError';
-import { validateApplicationInput } from '@backend/lib/applications';
+import { APPLICATION_FEE_ZAR, validateApplicationInput } from '@backend/lib/applications';
+import { hasPaidAdminFee } from '@backend/lib/invites';
+import { parseLivingSituation, parseMonthlyExpenses, parseOtherIncome } from '@backend/lib/budget';
 import { isValidUUID } from '@/lib/validation';
 import { checkRateLimit, getRateLimitHeaders } from '@backend/lib/security/rateLimiter';
 import { validatePayloadSize } from '@backend/lib/security/validation';
@@ -21,8 +23,8 @@ import { validatePayloadSize } from '@backend/lib/security/validation';
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServerClient();
-    await getAuthenticatedProfile(supabase); // just needs *a* valid session
+    const db = await getServerDb();
+    await getAuthenticatedProfile(db); // just needs *a* valid session
 
     const propertyId = request.nextUrl.searchParams.get('property_id');
 
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid property_id format.' }, { status: 400 });
     }
 
-    let query = supabase
+    let query = db
       .from('applications')
       .select('id, property_id, applicant_id, status, payment_status, first_name, last_name, monthly_income, created_at, paid_at')
       .order('created_at', { ascending: false });
@@ -60,6 +62,11 @@ export async function GET(request: NextRequest) {
  * authenticated session, never from the request body — a tenant cannot submit
  * an application on someone else's behalf.
  *
+ * Tenants must have paid the R150 tenant fee at registration first (403
+ * ADMIN_FEE_UNPAID otherwise); it covers the application, which goes
+ * straight into review. The applicant's budget (monthly expenses, other
+ * income, living situation) feeds the affordability assessment.
+ *
  * All three consents (credit, ID, bank statements) must be explicitly true
  * — this is what unlocks Task 8 (credit-check service) actually running.
  */
@@ -67,8 +74,8 @@ export async function POST(request: NextRequest) {
   try {
     validatePayloadSize(request.headers.get('content-length'));
 
-    const supabase = await getSupabaseServerClient();
-    const profile = await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    const profile = await getAuthenticatedProfile(db);
 
     const rateLimit = await checkRateLimit(profile.id, 'MUTATIONS');
     if (!rateLimit.allowed) {
@@ -78,14 +85,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
-    const { valid, errors } = validateApplicationInput(body);
-
-    if (!valid) {
-      return NextResponse.json({ error: 'Invalid input.', details: errors }, { status: 400 });
+    // Tenants register through a landlord/agent invite and must pay the
+    // R150 tenant fee before they can apply. That fee covers the
+    // application, so there's nothing more to pay here.
+    const tenantFeePaid = profile.role === 'tenant' && (await hasPaidAdminFee(db, profile.id));
+    if (profile.role === 'tenant' && !tenantFeePaid) {
+      return NextResponse.json(
+        { error: 'Please pay your registration admin fee before submitting an application.', code: 'ADMIN_FEE_UNPAID' },
+        { status: 403 }
+      );
     }
 
-    const { data, error } = await supabase
+    const body = await request.json();
+    const { valid, errors } = validateApplicationInput(body);
+    const expenses = parseMonthlyExpenses(body.monthly_expenses);
+    const otherIncome = parseOtherIncome(body.other_income);
+    const livingSituation = parseLivingSituation(body.living_situation);
+    const allErrors = [...errors, ...expenses.errors, ...otherIncome.errors, ...livingSituation.errors];
+
+    if (!valid || allErrors.length) {
+      return NextResponse.json({ error: 'Invalid input.', details: allErrors }, { status: 400 });
+    }
+    const now = new Date().toISOString();
+
+    const { data, error } = await db
       .from('applications')
       .insert([
         {
@@ -100,14 +123,23 @@ export async function POST(request: NextRequest) {
           job_title: body.job_title ?? null,
           employment_type: body.employment_type ?? null,
           monthly_income: body.monthly_income ?? null,
+          // No rent when they don't rent now, whatever the form sent.
+          current_rent: livingSituation.value && livingSituation.value !== 'renting' ? null : body.current_rent ?? null,
+          living_situation: livingSituation.value,
+          monthly_expenses: expenses.value ? JSON.stringify(expenses.value) : null,
+          other_income: otherIncome.value ? JSON.stringify(otherIncome.value) : null,
+          application_fee_amount: tenantFeePaid ? 0 : APPLICATION_FEE_ZAR,
+          ...(tenantFeePaid ? { payment_status: 'paid', paid_at: now } : {}),
           bank_name: body.bank_name ?? null,
           account_number: body.account_number ?? null,
           account_type: body.account_type ?? null,
-          co_applicant_details: body.co_applicant_details ?? null,
+          // Same jsonb-via-raw-pg-param issue as invoices.line_items — a
+          // non-null object must be stringified or Postgres rejects it.
+          co_applicant_details: body.co_applicant_details ? JSON.stringify(body.co_applicant_details) : null,
           consent_credit: body.consent_credit,
           consent_id_check: body.consent_id_check,
           consent_bank_statements: body.consent_bank_statements,
-          status: 'pending',
+          status: tenantFeePaid ? 'reviewing' : 'pending',
         },
       ])
       .select()

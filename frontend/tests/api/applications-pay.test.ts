@@ -3,8 +3,8 @@ import { NextRequest } from 'next/server';
 import { POST } from '../../app/api/applications/[id]/pay/route';
 import { UnauthorizedError, ForbiddenError } from '../../../backend/lib/auth';
 
-vi.mock('../../lib/supabaseServer', () => ({
-  getSupabaseServerClient: vi.fn(),
+vi.mock('../../lib/serverDb', () => ({
+  getServerDb: vi.fn(),
 }));
 
 vi.mock('../../../backend/lib/auth', async (importOriginal) => {
@@ -12,13 +12,13 @@ vi.mock('../../../backend/lib/auth', async (importOriginal) => {
   return { ...real, getAuthenticatedProfile: vi.fn() };
 });
 
-vi.mock('../../../backend/lib/supabaseAdmin', () => ({
-  getSupabaseAdmin: vi.fn(),
+vi.mock('../../../backend/lib/adminDb', () => ({
+  getAdminDb: vi.fn(),
 }));
 
-const { getSupabaseServerClient } = await import('../../lib/supabaseServer');
+const { getServerDb } = await import('../../lib/serverDb');
 const { getAuthenticatedProfile } = await import('../../../backend/lib/auth');
-const { getSupabaseAdmin } = await import('../../../backend/lib/supabaseAdmin');
+const { getAdminDb } = await import('../../../backend/lib/adminDb');
 
 const APP_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
 const USER_ID = 'b1ccdc00-0d1c-5fg9-cc7e-7ccace491b22';
@@ -54,7 +54,7 @@ function mockServerClientWithApp(app: object | null, dbError: object | null = nu
   const updateMock = vi.fn().mockReturnValue({
     eq: vi.fn().mockResolvedValue({ data: null, error: null }),
   });
-  vi.mocked(getSupabaseServerClient).mockResolvedValue({
+  vi.mocked(getServerDb).mockResolvedValue({
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock }),
@@ -66,7 +66,7 @@ function mockServerClientWithApp(app: object | null, dbError: object | null = nu
 
 // Helper: mock the admin client for inserting a payment record.
 function mockAdminClient(insertError: object | null = null) {
-  vi.mocked(getSupabaseAdmin).mockReturnValue({
+  vi.mocked(getAdminDb).mockReturnValue({
     from: vi.fn().mockReturnValue({
       insert: vi.fn().mockResolvedValue({ error: insertError }),
     }),
@@ -129,7 +129,7 @@ describe('POST /api/applications/[id]/pay', () => {
   it('inserts a pending payment record before returning', async () => {
     mockServerClientWithApp(mockApplication);
     const insertMock = vi.fn().mockResolvedValue({ error: null });
-    vi.mocked(getSupabaseAdmin).mockReturnValue({
+    vi.mocked(getAdminDb).mockReturnValue({
       from: vi.fn().mockReturnValue({ insert: insertMock }),
     } as any);
 
@@ -174,7 +174,7 @@ describe('POST /api/applications/[id]/pay', () => {
 
   it('returns 401 when not authenticated', async () => {
     vi.mocked(getAuthenticatedProfile).mockRejectedValue(new UnauthorizedError());
-    vi.mocked(getSupabaseServerClient).mockResolvedValue({} as any);
+    vi.mocked(getServerDb).mockResolvedValue({} as any);
 
     const res = await POST(makePostRequest(APP_ID), routeParams(APP_ID) as any);
 
@@ -204,7 +204,7 @@ describe('POST /api/applications/[id]/pay', () => {
 
   it('returns 500 when inserting the payment record fails', async () => {
     mockServerClientWithApp(mockApplication);
-    vi.mocked(getSupabaseAdmin).mockReturnValue({
+    vi.mocked(getAdminDb).mockReturnValue({
       from: vi.fn().mockReturnValue({
         insert: vi.fn().mockResolvedValue({ error: { message: 'DB write error' } }),
       }),

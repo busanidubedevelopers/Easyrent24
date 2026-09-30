@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { getAuthenticatedProfile, ForbiddenError } from '@backend/lib/auth';
-import { getSupabaseAdmin } from '@backend/lib/supabaseAdmin';
+import { getAdminDb } from '@backend/lib/adminDb';
 import { toErrorResponse } from '@backend/lib/apiError';
 
 interface RouteParams {
@@ -29,10 +29,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
 
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    const profile = await getAuthenticatedProfile(db);
 
-    const { data: property, error: fetchError } = await supabase
+    const { data: property, error: fetchError } = await db
       .from('properties')
       .select('landlord_id')
       .eq('id', id)
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const admin = getSupabaseAdmin();
+    const admin = getAdminDb();
     const ext = file.name.split('.').pop() || 'jpg';
     const path = `${property.landlord_id}/${id}/${Date.now()}.${ext}`;
 
@@ -79,11 +79,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: uploadError.message }, { status: 500 });
     }
 
-    const { data: publicUrlData } = admin.storage.from('property-images').getPublicUrl(path);
-    const publicUrl = publicUrlData.publicUrl;
+    // Not admin.storage.getPublicUrl() — that's a stub left over from before
+    // this ran on plain Postgres/local disk instead of real Supabase Storage
+    // and still returns a fixed stock photo. This bucket's files are now
+    // real, served back through our own public route.
+    //
+    // Not new URL(request.url).origin either — the server binds HOSTNAME
+    // 0.0.0.0 (see Dockerfile), so that would produce an unreachable
+    // "http://0.0.0.0:3000/..." URL. NEXT_PUBLIC_APP_URL is the same
+    // browser-facing origin already used for PayFast's return/notify URLs.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+    const publicUrl = `${appUrl}/api/storage/property-images/${path}`;
 
     // Append the new image URL to the property's images array.
-    const { data: current } = await supabase
+    const { data: current } = await db
       .from('properties')
       .select('images')
       .eq('id', id)
@@ -91,7 +100,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const updatedImages = [...(current?.images ?? []), publicUrl];
 
-    const { data: updated, error: updateError } = await supabase
+    const { data: updated, error: updateError } = await db
       .from('properties')
       .update({ images: updatedImages })
       .eq('id', id)

@@ -40,10 +40,10 @@ of how it was built and why specific decisions were made.
   actually run — `payfast.co.za` isn't reachable from this sandbox.
   **Test this against a real PayFast sandbox account before accepting real
   payments.**
-- **RLS policies**: tested extensively against a real local Postgres
-  instance during development (every migration includes documented test
-  results in `backend/README.md`), but never against your actual live
-  Supabase project.
+- **Access control**: the app runs on plain PostgreSQL with no row-level
+  security, so every API route checks the caller's access in code
+  (`backend/lib/applicationAccess.ts`, `backend/lib/leaseRecords.ts`).
+  `local-e2e-lease-flow.mjs` exercises those checks end to end.
 
 ### Explicitly NOT built
 - Phase 2 in its entirety (handyman jobs/bidding, financing, escrow)
@@ -68,39 +68,31 @@ and fill in real values. Full explanation of each: `backend/docs/ENVIRONMENT.md`
 
 | Variable | Where to get it |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase dashboard → Settings → API |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same page, "anon public" key |
-| `SUPABASE_URL` | Same as above (server-side copy) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Same page, "service_role" key — **never expose this to the browser** |
+| `DATABASE_URL` | Your Postgres connection string (`db` host inside docker-compose) |
+| `JWT_SECRET` | Any long random string (32+ chars) — signs session cookies |
 | `PAYFAST_MODE` | `sandbox` until you're ready to go live, then `live` |
 | `PAYFAST_MERCHANT_ID` / `PAYFAST_MERCHANT_KEY` / `PAYFAST_PASSPHRASE` | PayFast merchant dashboard |
 | `NEXT_PUBLIC_APP_URL` | Your real deployed URL — PayFast's servers must be able to reach `${NEXT_PUBLIC_APP_URL}/api/payments/payfast/notify` |
 
-⚠️ **A Supabase key was exposed in plaintext earlier in this project's
-history** (it was sitting in `test_supabase.mjs` in the original upload).
-**Rotate it in the Supabase dashboard before going live**, if this hasn't
-already been done.
+⚠️ **A Supabase service-role key from this project's earlier Supabase setup
+is in git history** (in `test_supabase.mjs` and the root `.env`). The app no
+longer uses Supabase, but **revoke that key / delete the old Supabase project**.
 
 ---
 
 ## 3. Database setup
 
-Run all 6 migrations **in order** via Supabase dashboard → SQL Editor (or
-`supabase db push` if you set up the CLI). Each one is additive — safe to
-run in sequence on a fresh project:
+The schema lives in `db/init/*.sql` and runs automatically when the Postgres
+volume is first created (`docker compose up -d db`). Each file is idempotent,
+so a newer file can be applied to an existing database:
 
-1. `001_initial_schema.sql` — profiles, properties, applications, handyman_jobs, market_comparisons
-2. `002_phase1_core_tables.sql` — bids, invoices, loans, escrow, notifications
-3. `003_properties_policies.sql` — fixes missing UPDATE/DELETE policies on properties, adds image storage bucket
-4. `004_applications_policies.sql` — fixes missing UPDATE policy on applications, adds private document storage bucket
-5. `005_payment_fields.sql` — payment tracking fields + payments audit table
-6. `006_invoice_numbering.sql` — sequential invoice numbers, scoped invoice delete policy
+```bash
+docker exec -i easyrent-postgres psql -U easyrent -d easyrent < db/init/003_invites_extraction_leases.sql
+```
 
-Each migration's header comment documents exactly what it does and why.
-Several fix **real gaps found in the original schema** (missing UPDATE/DELETE
-policies that would have silently blocked landlords from ever approving
-applications or editing their own listings) — these aren't optional
-extras, the app doesn't work correctly without them.
+1. `001_schema.sql` — users (with bcrypt password hashes), profiles, properties, applications, payments, handyman, invoices, loans, escrow, notifications, maintenance
+2. `002_application_documents.sql` — `applications.documents` (uploaded file paths)
+3. `003_invites_extraction_leases.sql` — tenant invites + admin fee, document extraction, leases
 
 ---
 
@@ -140,16 +132,14 @@ by `tsc` — documented in `backend/README.md` under Task 9/10.
 
 Don't flip real users onto this without going through this list:
 
-- [ ] Rotate the Supabase key that was exposed earlier in this project (see §2)
-- [ ] Run all 6 migrations against the real production Supabase project
+- [ ] Revoke the old Supabase key still in git history (see §2)
+- [ ] Run `db/init/*.sql` against the production Postgres (e.g. AWS RDS)
 - [ ] Test the full PayFast flow against a **real PayFast sandbox account**
       end-to-end (pay → ITN received → application status updates) — this
       has never actually run against PayFast's real servers
 - [ ] Set `PAYFAST_MODE=live` and use live (not sandbox) PayFast credentials
       only once the sandbox flow is fully verified
-- [ ] Confirm RLS policies behave correctly against the real Supabase
-      project, not just the local Postgres instance used during development
-- [ ] Set up AWS Secrets Manager for `SUPABASE_SERVICE_ROLE_KEY` and PayFast
+- [ ] Set up AWS Secrets Manager for `JWT_SECRET`, `DATABASE_URL` and PayFast
       credentials instead of plain environment variables (Task 2)
 - [ ] Fix the pre-existing frontend lint errors that are currently being
       silently ignored during build (`eslint.ignoreDuringBuilds: true` in
@@ -170,7 +160,7 @@ Don't flip real users onto this without going through this list:
 ## 7. Full API reference
 
 All routes are under `frontend/app/api/`. Every route requiring
-authentication uses cookie-based sessions (`frontend/lib/supabaseServer.ts`)
+authentication uses cookie-based sessions (`frontend/lib/serverDb.ts`)
 — see `backend/lib/auth.ts` for the role-guard pattern used throughout.
 
 | Route | Methods | Auth |

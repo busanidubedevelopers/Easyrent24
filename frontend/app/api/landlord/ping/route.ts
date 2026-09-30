@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { requireAuthenticatedRole } from '@backend/lib/auth';
 import { toErrorResponse } from '@backend/lib/apiError';
 
@@ -14,8 +14,8 @@ import { toErrorResponse } from '@backend/lib/apiError';
  */
 export async function GET() {
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await requireAuthenticatedRole(supabase, ['landlord', 'admin']);
+    const db = await getServerDb();
+    const profile = await requireAuthenticatedRole(db, ['landlord', 'admin']);
     return NextResponse.json({ message: `Hello landlord ${profile.full_name ?? profile.id}` });
   } catch (err) {
     const { status, body } = toErrorResponse(err);

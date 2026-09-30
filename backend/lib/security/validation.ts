@@ -17,11 +17,15 @@ export class ValidationError extends Error {
   }
 }
 
-// ── Strict UUID Regex ────────────────────────────────────────────────────────
-export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// ── UUID Regex ───────────────────────────────────────────────────────────────
+// Canonical 8-4-4-4-12 hex, the same format Postgres' uuid type accepts (and
+// the same check as frontend/lib/validation.ts isValidUUID). Deliberately not
+// restricted to RFC-4122 version/variant bits: rows seeded with hand-written
+// IDs (e.g. the demo properties) are valid Postgres UUIDs and must pass.
+export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Validates that a route or query parameter is a valid canonical UUID v1-v5.
+ * Validates that a route or query parameter is a canonical UUID.
  * Throws ValidationError if malformed or containing path traversal characters.
  */
 export function validateUuid(id: unknown, paramName = 'id'): string {

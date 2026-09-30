@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Clock, MapPin, Star, MessageSquare, FileText, ShieldCheck, Check, User, DollarSign, Phone, Send, Navigation } from "lucide-react";
+import { Clock, MapPin, Star, MessageSquare, ShieldCheck, Check, User, DollarSign, Phone, Send, Navigation } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-import { useSearchParams, useParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/apiClient";
 
 interface HandymanJob {
   id: string;
@@ -18,10 +18,13 @@ interface HandymanJob {
   postedBy: string;
   location: string;
   date: string;
+  posterId?: string;
+  agreedPrice?: number | null;
 }
 
 interface HandymanBid {
   id: string | number;
+  handymanId: string;
   provider: string;
   rating: number;
   jobs: number;
@@ -30,15 +33,24 @@ interface HandymanBid {
   status: string;
 }
 
+interface EscrowTransaction {
+  id: string;
+  status: "held" | "released" | "refunded" | "disputed";
+  amount: number;
+}
+
 export default function JobDetailPage() {
   const params = useParams(); // Get params
   const id = params?.id as string | undefined;
 
   const [jobStatus, setJobStatus] = useState("open"); // open -> pending_payment -> en_route -> in_progress -> completed
   const [acceptedBidId, setAcceptedBidId] = useState<string | number | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [isEscrowFunded, setIsEscrowFunded] = useState(false);
+  const [escrow, setEscrow] = useState<EscrowTransaction | null>(null);
+  const [isFundingEscrow, setIsFundingEscrow] = useState(false);
+  const [isReleasingFunds, setIsReleasingFunds] = useState(false);
+  const [isAcceptingBid, setIsAcceptingBid] = useState(false);
   const [userRole, setUserRole] = useState<"client" | "provider">("client");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
   const [job, setJob] = useState<HandymanJob | null>(null);
   const [bids, setBids] = useState<HandymanBid[]>([]);
@@ -65,56 +77,95 @@ export default function JobDetailPage() {
     setIsSubmittingBid(true);
 
     try {
-        const { data: user } = await supabase.auth.getUser();
-        if (!user?.user) throw new Error("Not logged in");
+      const res = await fetch(`/api/handyman/jobs/${id}/bid`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          amount: parseFloat(bidForm.price),
+          message: bidForm.comment,
+        }),
+      });
 
-        const { data, error } = await supabase
-            .from('handyman_bids')
-            .insert({
-                job_id: id,
-                handyman_id: user.user.id,
-                amount: parseFloat(bidForm.price),
-                message: bidForm.comment,
-                status: 'pending'
-            })
-            .select('*, profiles(first_name, last_name)')
-            .single();
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Failed (${res.status})`);
 
-        if (error) throw error;
-        
-        const newBid = {
-            id: data.id,
-            provider: data.profiles ? `${data.profiles.first_name} ${data.profiles.last_name}` : "You",
-            rating: 5.0,
-            jobs: 0,
-            price: data.amount,
-            comment: data.message,
-            status: data.status
-        };
-        setBids([...bids, newBid]);
-        setBidForm({ price: "", comment: "" });
+      const bid = json.bid;
+      const newBid: HandymanBid = {
+        id: bid.id,
+        handymanId: bid.handyman_id,
+        provider: 'You',
+        rating: 5.0,
+        jobs: 0,
+        price: bid.amount,
+        comment: bid.message,
+        status: bid.status,
+      };
+      setBids([...bids, newBid]);
+      setBidForm({ price: '', comment: '' });
     } catch (err: unknown) {
-        console.error("Error placing bid:", err);
-        alert(`Failed to place bid: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      console.error('Error placing bid:', err);
+      alert(`Failed to place bid: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
-        setIsSubmittingBid(false);
+      setIsSubmittingBid(false);
     }
   };
 
 
 
-  
-  const searchParams = useSearchParams();
+    // Real backend state (job.status + whether/how escrow was funded) is the
+  // source of truth; this derives which of this page's UI states to show
+  // from it. Needed because funding escrow round-trips through PayFast and
+  // back to this same page — a plain reload after that redirect has to land
+  // on the right screen, not just whatever state existed before navigating
+  // away, which a naive "jobData.status → jobStatus" pass-through can't do
+  // since the DB has no 'pending_payment' or 'en_route' status of its own.
+  function deriveJobStatus(dbStatus: string, escrowRow: EscrowTransaction | null): string {
+    if (dbStatus === 'open' || dbStatus === 'bidding') return 'open';
+    if (dbStatus === 'in_progress') {
+      return escrowRow?.status === 'held' ? 'in_progress' : 'pending_payment';
+    }
+    if (dbStatus === 'completed') {
+      // The handyman marking the job 'completed' just submits it for review
+      // — escrow only actually moves when the poster releases it. Funds
+      // still 'held' at this point means "awaiting the poster's approval",
+      // not "done"; only a 'released' escrow (or no escrow at all, e.g. a
+      // job that never went through funding) counts as fully finished.
+      return escrowRow?.status === 'held' ? 'awaiting_release' : 'completed';
+    }
+    return dbStatus;
+  }
+
+  // Which side of the job this viewer sees (client vs provider) has to come
+  // from who's actually signed in, not a manual switch — a real handyman
+  // hitting this page should see the provider view, and a real poster the
+  // client view, with no way to flip into the other side's controls.
+  useEffect(() => {
+    async function fetchCurrentUser() {
+      const { data } = await db.auth.getUser();
+      if (data?.user) {
+        setCurrentUserId(data.user.id);
+        setUserRole(data.user.user_metadata?.role === 'handyman' ? 'provider' : 'client');
+      }
+    }
+    fetchCurrentUser();
+  }, []);
 
   useEffect(() => {
      async function fetchJobAndBids() {
         if (!id) return;
         try {
-           const { data: jobData } = await supabase
-              .from('handyman_jobs')
-              .select('*')
-              .eq('id', id)
-              .single();
+           const [jobRes, escrowRes] = await Promise.all([
+             fetch(`/api/handyman/jobs/${id}`, { credentials: 'include' }),
+             fetch(`/api/handyman/jobs/${id}/escrow`, { credentials: 'include' }),
+           ]);
+           if (!jobRes.ok) return;
+           const json = await jobRes.json();
+
+           const escrowData = escrowRes.ok ? (await escrowRes.json()).escrow : null;
+           setEscrow(escrowData);
+
+           const jobData = json.job;
            if (jobData) {
               setJob({
                  id: jobData.id,
@@ -125,43 +176,40 @@ export default function JobDetailPage() {
                  status: jobData.status,
                  postedBy: 'Client',
                  location: jobData.location,
-                 date: new Date(jobData.created_at).toLocaleDateString()
+                 date: new Date(jobData.created_at).toLocaleDateString(),
+                 posterId: jobData.poster_id,
+                 agreedPrice: jobData.agreed_price !== null ? Number(jobData.agreed_price) : null,
               });
-              setJobStatus(jobData.status);
+              setJobStatus(deriveJobStatus(jobData.status, escrowData));
+              if (jobData.assigned_handyman_id) {
+                setAcceptedBidId(jobData.assigned_handyman_id);
+              }
            }
-           
-           const { data: bidsData } = await supabase
-              .from('handyman_bids')
-              .select(`*, profiles(first_name, last_name)`)
-              .eq('job_id', id);
-           
-           if (bidsData && bidsData.length > 0) {
-              setBids(bidsData.map(bid => ({
+
+           const bidsData: any[] = json.bids ?? [];
+           if (bidsData.length > 0) {
+              setBids(bidsData.map((bid: any) => ({
                  id: bid.id,
-                 provider: bid.profiles ? `${bid.profiles.first_name} ${bid.profiles.last_name}` : 'Unknown Provider',
+                 handymanId: bid.handyman_id,
+                 provider: 'Handyman',
                  rating: 5.0,
                  jobs: 0,
                  price: bid.amount,
                  comment: bid.message,
-                 status: bid.status
+                 status: bid.status,
               })));
            }
         } catch (err) {
-           console.error("Error fetching job and bids", err);
+           console.error('Error fetching job and bids', err);
         }
      }
      fetchJobAndBids();
   }, [id]);
 
-  useEffect(() => {
-    if (searchParams.get("funded") === "true") {
-       setJobStatus("en_route");
-       setIsEscrowFunded(true);
-       setAcceptedBidId(1); // Default to first bid for demo flow
-    }
-  }, [searchParams]);
-
-  // Simulate tracking updates when en_route
+  // Simulate tracking updates when en_route — purely a visual flourish, only
+  // reachable if something sets jobStatus to 'en_route'; nothing does
+  // currently since escrow funding now redirects through real PayFast and
+  // back rather than faking a driving animation.
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (jobStatus === "en_route") {
@@ -178,47 +226,135 @@ export default function JobDetailPage() {
     return () => clearInterval(interval);
   }, [jobStatus]);
 
-  const handleAcceptBid = (bidId: string | number) => {
-    setAcceptedBidId(bidId);
-    setJobStatus("pending_payment");
+  const handleAcceptBid = async (bidId: string | number) => {
+    if (!id) return;
+    const bid = bids.find((b) => b.id === bidId);
+    if (!bid) return;
+
+    setIsAcceptingBid(true);
+    try {
+      const res = await fetch(`/api/handyman/jobs/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          assigned_handyman_id: bid.handymanId,
+          agreed_price: bid.price,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+
+      setAcceptedBidId(bidId);
+      setJob((prev) => (prev ? { ...prev, agreedPrice: bid.price } : prev));
+      setJobStatus("pending_payment");
+    } catch (err: unknown) {
+      console.error('Error accepting bid:', err);
+      alert(`Failed to accept bid: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsAcceptingBid(false);
+    }
   };
 
-  const handleFundEscrow = () => {
-    setIsEscrowFunded(true);
-    // Simulate provider starting trip
-    setTimeout(() => {
-        setJobStatus("en_route");
-    }, 1000);
+  const handleFundEscrow = async () => {
+    if (!id) return;
+    setIsFundingEscrow(true);
+    try {
+      const res = await fetch(`/api/handyman/jobs/${id}/escrow/checkout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok || !data.processUrl) {
+        throw new Error(data.error || 'Failed to initialize PayFast');
+      }
+
+      // Same hidden-form auto-submit PayFast requires everywhere else in
+      // this app (see /checkout) — a GET redirect with query params isn't
+      // how PayFast's flow works.
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = data.processUrl;
+      for (const [key, value] of Object.entries(data.fields)) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = String(value);
+        form.appendChild(input);
+      }
+      document.body.appendChild(form);
+      form.submit();
+    } catch (err: unknown) {
+      console.error('Error funding escrow:', err);
+      alert(`Failed to fund escrow: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setIsFundingEscrow(false);
+    }
   };
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
-    
-    setMessages([...messages, { 
-      id: Date.now(), 
-      sender: userRole === "client" ? "client" : "provider", 
-      text: newMessage, 
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+
+    setMessages([...messages, {
+      id: Date.now(),
+      sender: userRole === "client" ? "client" : "provider",
+      text: newMessage,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }]);
     setNewMessage("");
   };
 
-  const handleReleaseFunds = () => {
-     setJobStatus("completed");
+  const handleReleaseFunds = async () => {
+    if (!id) return;
+    setIsReleasingFunds(true);
+    try {
+      const res = await fetch(`/api/handyman/jobs/${id}/escrow`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ action: 'release' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+
+      setEscrow(data.escrow);
+      setJobStatus('completed');
+    } catch (err: unknown) {
+      console.error('Error releasing funds:', err);
+      alert(`Failed to release funds: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsReleasingFunds(false);
+    }
+  };
+
+  // The handyman submitting work only marks the job 'completed' — escrow
+  // stays 'held' until the poster separately reviews and releases it via
+  // handleReleaseFunds above. A handyman can't release their own payment;
+  // the backend enforces this too (only the poster can PATCH escrow).
+  const handleSubmitWorkForReview = async () => {
+    if (!id) return;
+    setIsReleasingFunds(true);
+    try {
+      const res = await fetch(`/api/handyman/jobs/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'completed' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+
+      setJobStatus('awaiting_release');
+    } catch (err: unknown) {
+      console.error('Error submitting work:', err);
+      alert(`Failed to submit work: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsReleasingFunds(false);
+    }
   };
 
   return (
-    <div className="container max-w-6xl py-6 md:py-10">
-      {/* Role Toggle for Demo */}
-      <div className="fixed bottom-4 left-4 bg-background border border-border p-2 rounded-lg shadow-lg z-50 text-xs">
-        <p className="font-semibold mb-1">Demo View As:</p>
-        <div className="flex gap-2">
-           <button onClick={() => setUserRole("client")} className={cn("px-2 py-1 rounded", userRole === "client" ? "bg-brand text-white" : "bg-muted")}>Client</button>
-           <button onClick={() => setUserRole("provider")} className={cn("px-2 py-1 rounded", userRole === "provider" ? "bg-brand text-white" : "bg-muted")}>Provider</button>
-        </div>
-      </div>
-
+    <div className="container max-w-6xl pt-20 pb-6 md:pb-10">
       <div className="grid gap-6 lg:grid-cols-3 h-[calc(100vh-8rem)]">
         {/* Left Column: Job Info & Tracking */}
         <div className="lg:col-span-2 flex flex-col gap-6 overflow-y-auto pr-2">
@@ -311,17 +447,17 @@ export default function JobDetailPage() {
                 {[
                   { id: "open", label: "Posted" },
                   { id: "pending_payment", label: "Bid Accepted" },
-                  { id: "en_route", label: "On the Way" },
-                  { id: "in_progress", label: "In Progress" },
+                  { id: "in_progress", label: "Escrow Held" },
+                  { id: "awaiting_release", label: "Work Submitted" },
                   { id: "completed", label: "Done" }
                 ].map((s, i) => (
                    <div key={s.id} className="flex items-center flex-shrink-0">
                       <div className={cn(
                         "px-3 py-1 rounded-full text-xs font-semibold border transition-colors",
-                        jobStatus === s.id 
-                           ? "bg-brand text-white border-brand" 
-                           : (["open", "pending_payment", "en_route", "in_progress", "completed"].indexOf(jobStatus) > i 
-                              ? "bg-green-100 text-green-700 border-green-200" 
+                        jobStatus === s.id
+                           ? "bg-brand text-white border-brand"
+                           : (["open", "pending_payment", "in_progress", "awaiting_release", "completed"].indexOf(jobStatus) > i
+                              ? "bg-green-100 text-green-700 border-green-200"
                               : "bg-muted text-muted-foreground border-transparent")
                       )}>
                          {s.label}
@@ -388,11 +524,12 @@ export default function JobDetailPage() {
                      <div className="text-right shrink-0">
                         <div className="font-bold text-lg">R {bid.price}</div>
                         {userRole === "client" && (
-                           <button 
+                           <button
                              onClick={() => handleAcceptBid(bid.id)}
-                             className="mt-2 text-xs bg-foreground text-background px-4 py-2.5 rounded font-medium hover:opacity-90 transition-opacity shadow-sm"
+                             disabled={isAcceptingBid}
+                             className="mt-2 text-xs bg-foreground text-background px-4 py-2.5 rounded font-medium hover:opacity-90 transition-opacity shadow-sm disabled:opacity-50"
                            >
-                              Accept Bid
+                              {isAcceptingBid ? "Accepting..." : "Accept Bid"}
                            </button>
                         )}
                         {bid.provider.includes("You") && (
@@ -498,15 +635,16 @@ export default function JobDetailPage() {
                  </p>
                  <div className="flex justify-between font-bold mb-4 border-t border-blue-200 pt-2">
                     <span>Total</span>
-                    <span>R {bids.find(b => b.id === acceptedBidId)?.price}</span>
+                    <span>R {job?.agreedPrice ?? bids.find(b => b.handymanId === acceptedBidId)?.price}</span>
                  </div>
                  {userRole === "client" && (
                     <div className="space-y-3">
-                       <button 
+                       <button
                           onClick={handleFundEscrow}
-                          className="w-full bg-brand text-white py-2 rounded-md font-medium shadow hover:bg-brand/90 transition-colors"
+                          disabled={isFundingEscrow}
+                          className="w-full bg-brand text-white py-2 rounded-md font-medium shadow hover:bg-brand/90 transition-colors disabled:opacity-50"
                        >
-                          Pay & Start Job
+                          {isFundingEscrow ? "Redirecting to PayFast..." : "Pay & Start Job"}
                        </button>
                        <div className="relative flex items-center py-1">
                           <div className="flex-grow border-t border-blue-200/50"></div>
@@ -514,7 +652,7 @@ export default function JobDetailPage() {
                           <div className="flex-grow border-t border-blue-200/50"></div>
                        </div>
                        <Link
-                          href={`/financing?jobId=${job?.id}&amount=${bids.find(b => b.id === acceptedBidId)?.price}`}
+                          href={`/financing?jobId=${job?.id}&amount=${job?.agreedPrice ?? ''}`}
                           className="w-full inline-flex items-center justify-center rounded-md border border-brand/50 bg-background px-4 py-2 text-sm font-medium text-brand shadow-sm hover:bg-brand/5 transition-colors"
                        >
                           <DollarSign className="mr-2 h-4 w-4" />
@@ -524,44 +662,54 @@ export default function JobDetailPage() {
                  )}
               </div>
            )}
-           
+
            {jobStatus === "in_progress" && (
               <div className="rounded-xl border border-green-200 bg-green-50 dark:bg-green-950/20 p-6 shadow-sm">
                  <h3 className="font-semibold flex items-center gap-2 mb-2 text-green-700 dark:text-green-400">
-                    <Check className="h-5 w-5" /> Work In Progress
+                    <ShieldCheck className="h-5 w-5" /> Escrow Held — R {escrow?.amount ?? job?.agreedPrice}
                  </h3>
                  <p className="text-sm text-muted-foreground mb-4">
-                    {userRole === "client" 
-                       ? "The provider is currently working on your task. Once they submit completion photos, you can release funds." 
-                       : "You are currently working on this job. Once done, upload completion photos and generate an invoice."}
+                    {userRole === "client"
+                       ? "Funds are held securely. Once the provider submits the work, you'll be able to review and release payment."
+                       : "You are currently working on this job — the client's payment is held in escrow. Once done, submit the work for the client's approval."}
                  </p>
-                 {userRole === "client" ? (
-                    <button 
-                       onClick={handleReleaseFunds}
-                       className="w-full bg-green-600 text-white py-2 rounded-md font-medium shadow hover:bg-green-700 transition-colors"
-                    >
-                       Approve Work & Release Funds
-                    </button>
-                 ) : (
+                 {userRole === "provider" && (
                     <div className="space-y-3 mt-4">
                        <label className="block border-2 border-dashed border-green-300 rounded-lg p-4 text-center cursor-pointer bg-white dark:bg-card hover:bg-green-50/50 transition-colors">
                           <span className="text-sm font-medium text-green-700 dark:text-green-400 block mb-1">📸 Upload After Photos</span>
-                          <span className="text-xs text-muted-foreground">Required for payment release</span>
+                          <span className="text-xs text-muted-foreground">Optional, helps the client approve faster</span>
                           <input type="file" className="hidden" multiple />
                        </label>
-                       <button 
-                          onClick={() => alert("Invoice #INV-293 generated! Sent to client for review.")}
-                          className="w-full border shadow-sm py-2 rounded-md font-medium bg-white dark:bg-card hover:bg-muted transition-colors flex items-center justify-center gap-2"
+                       <button
+                          onClick={handleSubmitWorkForReview}
+                          disabled={isReleasingFunds}
+                          className="w-full bg-brand text-white py-2 rounded-md font-medium shadow hover:bg-brand/90 transition-colors disabled:opacity-50"
                        >
-                          <FileText className="h-4 w-4" /> Generate Invoice
-                       </button>
-                       <button 
-                          onClick={handleReleaseFunds}
-                          className="w-full bg-brand text-white py-2 rounded-md font-medium shadow hover:bg-brand/90 transition-colors"
-                       >
-                          Submit Work & Request Release
+                          {isReleasingFunds ? "Submitting..." : "Submit Work for Review"}
                        </button>
                     </div>
+                 )}
+              </div>
+           )}
+
+           {jobStatus === "awaiting_release" && (
+              <div className="rounded-xl border border-green-200 bg-green-50 dark:bg-green-950/20 p-6 shadow-sm">
+                 <h3 className="font-semibold flex items-center gap-2 mb-2 text-green-700 dark:text-green-400">
+                    <Check className="h-5 w-5" /> Work Submitted
+                 </h3>
+                 <p className="text-sm text-muted-foreground mb-4">
+                    {userRole === "client"
+                       ? "The provider has marked this job as done. Review the work, then release the R " + (escrow?.amount ?? job?.agreedPrice) + " held in escrow."
+                       : "Submitted — waiting for the client to review and release the held payment."}
+                 </p>
+                 {userRole === "client" && (
+                    <button
+                       onClick={handleReleaseFunds}
+                       disabled={isReleasingFunds}
+                       className="w-full bg-green-600 text-white py-2 rounded-md font-medium shadow hover:bg-green-700 transition-colors disabled:opacity-50"
+                    >
+                       {isReleasingFunds ? "Releasing..." : "Approve Work & Release Funds"}
+                    </button>
                  )}
               </div>
            )}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { getAuthenticatedProfile, ForbiddenError } from '@backend/lib/auth';
 import { toErrorResponse } from '@backend/lib/apiError';
 import { buildRentInvoiceLineItems, validateLineItems, calculateInvoiceTotal, type LineItem } from '@backend/lib/invoices';
@@ -32,10 +32,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
 
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    const profile = await getAuthenticatedProfile(db);
 
-    const { data: property, error: propertyError } = await supabase
+    const { data: property, error: propertyError } = await db
       .from('properties')
       .select('id, landlord_id, price, title')
       .eq('id', id)
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     let recipientId: string | undefined = body.recipient_id;
 
     if (!recipientId) {
-      const { data: approvedApplication } = await supabase
+      const { data: approvedApplication } = await db
         .from('applications')
         .select('applicant_id')
         .eq('property_id', id)
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const lineItems = [...buildRentInvoiceLineItems(Number(property.price)), ...extraItems];
     const amount = calculateInvoiceTotal(lineItems);
 
-    const { data: invoice, error: insertError } = await supabase
+    const { data: invoice, error: insertError } = await db
       .from('invoices')
       .insert([
         {

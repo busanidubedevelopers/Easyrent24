@@ -3,8 +3,8 @@ import { NextRequest } from 'next/server';
 import { GET, POST } from '../../app/api/applications/route';
 import { UnauthorizedError } from '../../../backend/lib/auth';
 
-vi.mock('../../lib/supabaseServer', () => ({
-  getSupabaseServerClient: vi.fn(),
+vi.mock('../../lib/serverDb', () => ({
+  getServerDb: vi.fn(),
 }));
 
 vi.mock('../../../backend/lib/auth', async (importOriginal) => {
@@ -17,9 +17,15 @@ vi.mock('../../../backend/lib/applications', async (importOriginal) => {
   return { ...real, validateApplicationInput: vi.fn() };
 });
 
-const { getSupabaseServerClient } = await import('../../lib/supabaseServer');
+vi.mock('../../../backend/lib/invites', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../backend/lib/invites')>();
+  return { ...real, hasPaidAdminFee: vi.fn() };
+});
+
+const { getServerDb } = await import('../../lib/serverDb');
 const { getAuthenticatedProfile } = await import('../../../backend/lib/auth');
 const { validateApplicationInput } = await import('../../../backend/lib/applications');
+const { hasPaidAdminFee } = await import('../../../backend/lib/invites');
 
 const mockProfile = {
   id: 'user-abc',
@@ -81,12 +87,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getAuthenticatedProfile).mockResolvedValue(mockProfile);
   vi.mocked(validateApplicationInput).mockReturnValue({ valid: true, errors: [] });
+  vi.mocked(hasPaidAdminFee).mockResolvedValue(true);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('GET /api/applications', () => {
   it('returns 200 with applications list for authenticated user', async () => {
-    vi.mocked(getSupabaseServerClient).mockResolvedValue({
+    vi.mocked(getServerDb).mockResolvedValue({
       from: vi.fn().mockReturnValue({
         select: vi.fn().mockReturnValue({
           order: vi.fn().mockResolvedValue({ data: [mockApplication], error: null }),
@@ -105,7 +112,7 @@ describe('GET /api/applications', () => {
 
   it('narrows by property_id when the query param is present and is a valid UUID', async () => {
     const eqMock = vi.fn().mockResolvedValue({ data: [mockApplication], error: null });
-    vi.mocked(getSupabaseServerClient).mockResolvedValue({
+    vi.mocked(getServerDb).mockResolvedValue({
       from: vi.fn().mockReturnValue({
         select: vi.fn().mockReturnValue({
           order: vi.fn().mockReturnValue({ eq: eqMock }),
@@ -121,7 +128,7 @@ describe('GET /api/applications', () => {
   });
 
   it('returns 400 when property_id is not a valid UUID', async () => {
-    vi.mocked(getSupabaseServerClient).mockResolvedValue({} as any);
+    vi.mocked(getServerDb).mockResolvedValue({} as any);
 
     const req = makeRequest('GET', 'http://localhost:3000/api/applications?property_id=not-a-uuid');
     const res = await GET(req);
@@ -132,7 +139,7 @@ describe('GET /api/applications', () => {
   });
 
   it('returns 401 when not authenticated', async () => {
-    vi.mocked(getSupabaseServerClient).mockResolvedValue({} as any);
+    vi.mocked(getServerDb).mockResolvedValue({} as any);
     vi.mocked(getAuthenticatedProfile).mockRejectedValue(
       new UnauthorizedError()
     );
@@ -144,7 +151,7 @@ describe('GET /api/applications', () => {
   });
 
   it('returns 500 with a generic message when the database query fails', async () => {
-    vi.mocked(getSupabaseServerClient).mockResolvedValue({
+    vi.mocked(getServerDb).mockResolvedValue({
       from: vi.fn().mockReturnValue({
         select: vi.fn().mockReturnValue({
           order: vi.fn().mockResolvedValue({
@@ -168,7 +175,7 @@ describe('GET /api/applications', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('POST /api/applications', () => {
   it('returns 201 with the created application on valid input', async () => {
-    vi.mocked(getSupabaseServerClient).mockResolvedValue({
+    vi.mocked(getServerDb).mockResolvedValue({
       from: vi.fn().mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
@@ -192,7 +199,7 @@ describe('POST /api/applications', () => {
         single: vi.fn().mockResolvedValue({ data: mockApplication, error: null }),
       }),
     });
-    vi.mocked(getSupabaseServerClient).mockResolvedValue({
+    vi.mocked(getServerDb).mockResolvedValue({
       from: vi.fn().mockReturnValue({ insert: insertMock }),
     } as any);
 
@@ -201,7 +208,10 @@ describe('POST /api/applications', () => {
 
     const insertedRows = insertMock.mock.calls[0][0] as any[];
     expect(insertedRows[0].applicant_id).toBe('user-abc');
-    expect(insertedRows[0].status).toBe('pending');
+    // The R150 tenant fee paid at registration covers the application.
+    expect(insertedRows[0].status).toBe('reviewing');
+    expect(insertedRows[0].payment_status).toBe('paid');
+    expect(insertedRows[0].application_fee_amount).toBe(0);
   });
 
   it('returns 400 with validation errors when input is invalid', async () => {
@@ -209,7 +219,7 @@ describe('POST /api/applications', () => {
       valid: false,
       errors: ['First name is required.', 'Consent to credit check is required.'],
     });
-    vi.mocked(getSupabaseServerClient).mockResolvedValue({} as any);
+    vi.mocked(getServerDb).mockResolvedValue({} as any);
 
     const req = makeRequest('POST', 'http://localhost:3000/api/applications', {});
     const res = await POST(req);
@@ -220,8 +230,43 @@ describe('POST /api/applications', () => {
     expect(body.details).toContain('First name is required.');
   });
 
+  it('returns 403 ADMIN_FEE_UNPAID when a tenant has not paid the registration admin fee', async () => {
+    vi.mocked(hasPaidAdminFee).mockResolvedValue(false);
+    const insertMock = vi.fn();
+    vi.mocked(getServerDb).mockResolvedValue({
+      from: vi.fn().mockReturnValue({ insert: insertMock }),
+    } as any);
+
+    const req = makeRequest('POST', 'http://localhost:3000/api/applications', validBody);
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.code).toBe('ADMIN_FEE_UNPAID');
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('does not require an admin fee from non-tenant roles', async () => {
+    vi.mocked(hasPaidAdminFee).mockResolvedValue(false);
+    vi.mocked(getAuthenticatedProfile).mockResolvedValue({ ...mockProfile, role: 'admin' });
+    vi.mocked(getServerDb).mockResolvedValue({
+      from: vi.fn().mockReturnValue({
+        insert: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: mockApplication, error: null }),
+          }),
+        }),
+      }),
+    } as any);
+
+    const res = await POST(makeRequest('POST', 'http://localhost:3000/api/applications', validBody));
+
+    expect(res.status).toBe(201);
+    expect(hasPaidAdminFee).not.toHaveBeenCalled();
+  });
+
   it('returns 401 when not authenticated', async () => {
-    vi.mocked(getSupabaseServerClient).mockResolvedValue({} as any);
+    vi.mocked(getServerDb).mockResolvedValue({} as any);
     vi.mocked(getAuthenticatedProfile).mockRejectedValue(new UnauthorizedError());
 
     const req = makeRequest('POST', 'http://localhost:3000/api/applications', validBody);
@@ -231,7 +276,7 @@ describe('POST /api/applications', () => {
   });
 
   it('returns 500 with a generic message when the database insert fails', async () => {
-    vi.mocked(getSupabaseServerClient).mockResolvedValue({
+    vi.mocked(getServerDb).mockResolvedValue({
       from: vi.fn().mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({

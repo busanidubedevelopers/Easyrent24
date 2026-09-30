@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { requireAuthenticatedRole } from '@backend/lib/auth';
 import { toErrorResponse } from '@backend/lib/apiError';
-import { buildDashboardSummary } from '@backend/lib/landlordDashboard';
+import { buildDashboardSummary, type ApplicationLite, type PropertyLite } from '@backend/lib/landlordDashboard';
 
 /**
  * GET /api/landlord/dashboard
@@ -18,25 +18,37 @@ import { buildDashboardSummary } from '@backend/lib/landlordDashboard';
  */
 export async function GET() {
   try {
-    const supabase = await getSupabaseServerClient();
-    await requireAuthenticatedRole(supabase, ['landlord', 'admin']);
+    const db = await getServerDb();
+    const profile = await requireAuthenticatedRole(db, ['landlord', 'admin']);
 
-    const [{ data: properties, error: propertiesError }, { data: applications, error: applicationsError }] =
-      await Promise.all([
-        supabase.from('properties').select('id, status'),
-        supabase.from('applications').select('id, status, risk_level, property_id'),
-      ]);
+    const { data: properties, error: propertiesError } = await db
+      .from('properties')
+      .select('id, status, landlord_id')
+      .eq('landlord_id', profile.id);
 
     if (propertiesError) {
       console.error('GET /api/landlord/dashboard: properties query error', propertiesError);
       return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 });
     }
-    if (applicationsError) {
-      console.error('GET /api/landlord/dashboard: applications query error', applicationsError);
-      return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 });
+
+    const propertyIds = (properties ?? []).map((property: { id: string }) => property.id).filter(Boolean);
+
+    let applications: ApplicationLite[] = [];
+    if (propertyIds.length > 0) {
+      const { data: applicationsData, error: applicationsError } = await db
+        .from('applications')
+        .select('id, status, risk_level, property_id')
+        .in('property_id', propertyIds);
+
+      if (applicationsError) {
+        console.error('GET /api/landlord/dashboard: applications query error', applicationsError);
+        return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 });
+      }
+
+      applications = (applicationsData ?? []) as ApplicationLite[];
     }
 
-    const summary = buildDashboardSummary(properties ?? [], applications ?? []);
+    const summary = buildDashboardSummary((properties ?? []) as PropertyLite[], applications);
 
     return NextResponse.json({ summary });
   } catch (err) {

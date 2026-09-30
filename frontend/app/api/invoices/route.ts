@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { requireAuthenticatedRole } from '@backend/lib/auth';
 import { toErrorResponse } from '@backend/lib/apiError';
 import { validateLineItems, calculateInvoiceTotal, type LineItem } from '@backend/lib/invoices';
@@ -16,10 +16,10 @@ import { isValidUUID } from '@/lib/validation';
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServerClient();
-    await requireAuthenticatedRole(supabase, ['landlord', 'tenant', 'handyman', 'admin']);
+    const db = await getServerDb();
+    await requireAuthenticatedRole(db, ['landlord', 'tenant', 'handyman', 'admin']);
 
-    let query = supabase.from('invoices').select('*').order('created_at', { ascending: false });
+    let query = db.from('invoices').select('*').order('created_at', { ascending: false });
 
     const status = request.nextUrl.searchParams.get('status');
     if (status) query = query.eq('status', status);
@@ -53,8 +53,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await requireAuthenticatedRole(supabase, ['landlord', 'handyman', 'admin']);
+    const db = await getServerDb();
+    const profile = await requireAuthenticatedRole(db, ['landlord', 'handyman', 'admin']);
 
     const body = await request.json();
 
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
 
     const amount = calculateInvoiceTotal(lineItems);
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('invoices')
       .insert([
         {
@@ -90,7 +90,12 @@ export async function POST(request: NextRequest) {
           recipient_id: body.recipient_id,
           property_id: body.property_id ?? null,
           job_id: body.job_id ?? null,
-          line_items: lineItems,
+          // This client binds params via node-postgres directly (no Supabase/
+          // PostgREST layer to auto-serialize objects), and a raw JS array
+          // gets bound using pg's native ARRAY wire format, not JSON — which
+          // a jsonb column then rejects. Stringify explicitly so Postgres
+          // parses it as JSON text and casts it into line_items.
+          line_items: JSON.stringify(lineItems),
           amount,
           due_date: body.due_date ?? null,
           status: 'draft',

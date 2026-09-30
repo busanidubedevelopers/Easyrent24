@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { getAuthenticatedProfile, ForbiddenError } from '@backend/lib/auth';
 import { toErrorResponse } from '@backend/lib/apiError';
 import {
@@ -30,10 +30,10 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const supabase = await getSupabaseServerClient();
-    await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    await getAuthenticatedProfile(db);
 
-    const { data, error } = await supabase.from('applications').select('*').eq('id', id).maybeSingle();
+    const { data, error } = await db.from('applications').select('*').eq('id', id).maybeSingle();
 
     if (error) {
       console.error(`GET /api/applications/${id}: DB error`, error);
@@ -72,12 +72,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    const profile = await getAuthenticatedProfile(db);
 
-    const { data: existing, error: fetchError } = await supabase
+    const { data: existing, error: fetchError } = await db
       .from('applications')
-      .select('applicant_id, status, property_id, properties(landlord_id)')
+      .select('applicant_id, status, property_id, payment_status')
       .eq('id', id)
       .maybeSingle();
 
@@ -89,7 +89,24 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Application not found.' }, { status: 404 });
     }
 
-    const landlordId = (existing.properties as unknown as { landlord_id: string } | null)?.landlord_id;
+    // This client wraps plain Postgres, not real Supabase/PostgREST — there's
+    // no relational-select support, so the property is a separate lookup
+    // rather than a nested `properties(...)` select.
+    let landlordId: string | undefined;
+    if (existing.property_id) {
+      const { data: prop, error: propError } = await db
+        .from('properties')
+        .select('landlord_id')
+        .eq('id', existing.property_id)
+        .maybeSingle();
+
+      if (propError) {
+        console.error(`PATCH /api/applications/${id}: property fetch error`, propError);
+        return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 });
+      }
+      landlordId = prop?.landlord_id;
+    }
+
     const isApplicant = existing.applicant_id === profile.id;
     const isLandlord = landlordId === profile.id;
     const isAdmin = profile.role === 'admin';
@@ -122,6 +139,17 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           { status: 400 }
         );
       }
+
+      // The application fee is not optional — a lease is never generated
+      // for an applicant who hasn't paid it. Declining doesn't need this
+      // check (rejecting someone shouldn't require them to have paid first).
+      if (to === 'approved' && existing.payment_status !== 'paid') {
+        return NextResponse.json(
+          { error: 'This application cannot be approved until the application fee has been paid.' },
+          { status: 400 }
+        );
+      }
+
       updates.status = to;
     }
 
@@ -167,7 +195,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'No valid fields to update.' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('applications')
       .update(updates)
       .eq('id', id)

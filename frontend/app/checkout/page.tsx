@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { CreditCard, Lock, ShieldCheck, ExternalLink, Loader2 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/apiClient";
+import { APPLICATION_FEE_ZAR } from "@backend/lib/applications";
 
 export default function CheckoutPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [userEmail, setUserEmail] = useState("demo@easyrent.com");
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    db.auth.getUser().then(({ data }) => {
       if (data?.user?.email) {
         setUserEmail(data.user.email);
       }
@@ -24,7 +25,7 @@ export default function CheckoutPage() {
       const res = await fetch("/api/payments/payfast/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: 250, email: userEmail }),
+        body: JSON.stringify({ amount: APPLICATION_FEE_ZAR, email: userEmail }),
       });
 
       const data = await res.json();
@@ -56,7 +57,7 @@ export default function CheckoutPage() {
   };
 
   return (
-    <div className="container max-w-4xl py-12 md:py-16">
+    <div className="container max-w-4xl pt-20 pb-12 md:pb-16">
       <div className="mb-8 md:mb-12 text-center">
         <h1 className="text-3xl font-bold tracking-tight md:text-4xl">Application Checkout</h1>
         <p className="mt-2 text-muted-foreground">Complete your tenant screening & application fee via PayFast.</p>
@@ -81,7 +82,7 @@ export default function CheckoutPage() {
             
             <div className="flex justify-between items-center font-bold text-lg">
               <span>Total Due</span>
-              <span className="text-brand">R 250.00</span>
+              <span className="text-brand">R {APPLICATION_FEE_ZAR.toFixed(2)}</span>
             </div>
             
             <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground bg-green-50 dark:bg-green-950/30 p-2.5 rounded-lg border border-green-200 dark:border-green-900">
@@ -119,7 +120,7 @@ export default function CheckoutPage() {
                 </>
               ) : (
                 <>
-                  Pay with PayFast (R 250.00) <ExternalLink className="ml-2 h-4 w-4" />
+                  Pay with PayFast (R {APPLICATION_FEE_ZAR.toFixed(2)}) <ExternalLink className="ml-2 h-4 w-4" />
                 </>
               )}
             </button>

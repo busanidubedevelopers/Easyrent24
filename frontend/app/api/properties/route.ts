@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { requireAuthenticatedRole } from '@backend/lib/auth';
 import { toErrorResponse } from '@backend/lib/apiError';
 import { validatePropertyInput } from '@backend/lib/properties';
@@ -24,13 +24,13 @@ import { validatePropertyInput } from '@backend/lib/properties';
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServerClient();
+    const db = await getServerDb();
     const params = request.nextUrl.searchParams;
 
     const limit = Math.min(parseInt(params.get('limit') ?? '20', 10) || 20, 100);
     const offset = Math.max(parseInt(params.get('offset') ?? '0', 10) || 0, 0);
 
-    let query = supabase
+    let query = db
       .from('properties')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
@@ -65,14 +65,16 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/properties
  *
- * Creates a new property listing. Landlord or admin only. Always created as
- * 'draft' regardless of what the client sends — publishing is a deliberate
- * separate action via PATCH, not something that happens accidentally on create.
+ * Creates a new property listing. Landlord or admin only.
+ * Accepts an optional `status` of 'draft' (default) or 'published' so the
+ * list-property page can publish directly in one step. Any other status value
+ * is rejected — jumping straight to 'rented' or 'archived' on creation
+ * makes no sense and is blocked here.
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await requireAuthenticatedRole(supabase, ['landlord', 'admin']);
+    const db = await getServerDb();
+    const profile = await requireAuthenticatedRole(db, ['landlord', 'admin']);
 
     const body = await request.json();
     const { valid, errors } = validatePropertyInput(body);
@@ -81,7 +83,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid input.', details: errors }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    // Only allow draft or published on creation
+    const requestedStatus = body.status;
+    const allowedCreateStatuses = ['draft', 'published'];
+    const status = allowedCreateStatuses.includes(requestedStatus) ? requestedStatus : 'draft';
+
+    const { data, error } = await db
       .from('properties')
       .insert([
         {
@@ -95,7 +102,7 @@ export async function POST(request: NextRequest) {
           property_type: body.property_type ?? null,
           description: body.description ?? null,
           features: body.features ?? null,
-          status: 'draft',
+          status,
         },
       ])
       .select()

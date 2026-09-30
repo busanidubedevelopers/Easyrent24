@@ -203,3 +203,37 @@ export function isPayfastIp(ip: string | null | undefined): boolean {
   const cleanIp = ip.split(',')[0].trim();
   return PAYFAST_VALID_IPS.has(cleanIp);
 }
+
+/**
+ * Hosts PayFast sends ITNs from. PayFast's own guidance is to validate the
+ * source IP against these hosts' current DNS records rather than a fixed
+ * list — their servers move (w2w.payfast.co.za resolves outside the static
+ * subnets above), and a stale list silently rejects real payments.
+ */
+export const PAYFAST_ITN_HOSTS = ['www.payfast.co.za', 'sandbox.payfast.co.za', 'w1w.payfast.co.za', 'w2w.payfast.co.za'];
+
+const HOST_CACHE_MS = 10 * 60 * 1000;
+let hostIpCache: { ips: Set<string>; at: number } | null = null;
+
+async function payfastHostIps(): Promise<Set<string>> {
+  if (hostIpCache && Date.now() - hostIpCache.at < HOST_CACHE_MS) return hostIpCache.ips;
+  const { promises: dns } = await import('dns');
+  const results = await Promise.allSettled(PAYFAST_ITN_HOSTS.map((h) => dns.resolve4(h)));
+  const ips = new Set<string>();
+  for (const r of results) if (r.status === 'fulfilled') r.value.forEach((ip) => ips.add(ip));
+  hostIpCache = { ips, at: Date.now() };
+  return ips;
+}
+
+/**
+ * True if the ITN's source IP is PayFast's: the known subnets, or any
+ * current address of PayFast's ITN hosts. Signature verification and the
+ * server-to-server validate call remain the primary checks; this is
+ * defence in depth.
+ */
+export async function isPayfastSource(ip: string | null | undefined): Promise<boolean> {
+  if (!ip) return false;
+  const cleanIp = ip.split(',')[0].trim();
+  if (PAYFAST_VALID_IPS.has(cleanIp)) return true;
+  return (await payfastHostIps()).has(cleanIp);
+}

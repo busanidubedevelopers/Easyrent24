@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabaseClient';
+import { db } from '@/lib/apiClient';
 import { Building2, Plus, FileText, Hammer, Loader2, ArrowRight, DollarSign, UserPlus, Wrench } from 'lucide-react';
 
 interface Property {
@@ -12,7 +12,7 @@ interface Property {
   price: number;
   status: string;
   created_at: string;
-  // images: string[];
+  images?: string[];
 }
 
 interface DashboardSummary {
@@ -21,28 +21,40 @@ interface DashboardSummary {
   needsAttention?: Array<{ id: string }>;
 }
 
+interface Handyman {
+  id: string;
+  full_name: string;
+  phone?: string;
+  services_offered?: string[];
+  experience_years?: number;
+}
+
 interface MaintenanceTicket {
   id: string;
   title: string;
   description: string;
   priority: string;
   status: string;
+  assigned_handyman_id?: string | null;
   created_at: string;
 }
 
-import { User } from '@supabase/supabase-js';
+type DashboardUser = { id: string; email?: string; user_metadata?: { full_name?: string; role?: string } };
 
 export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [properties, setProperties] = useState<Property[]>([]);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<DashboardUser | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [maintenanceTickets, setMaintenanceTickets] = useState<MaintenanceTicket[]>([]);
+  const [handymen, setHandymen] = useState<Handyman[]>([]);
+  const [assigningTicketId, setAssigningTicketId] = useState<string | null>(null);
+  const [selectedHandyman, setSelectedHandyman] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const checkUser = async () => {
       try {
-        const { data, error } = await supabase.auth.getUser();
+        const { data, error } = await db.auth.getUser();
         if (error || !data?.user) {
           setUser(null);
           setIsLoading(false);
@@ -52,7 +64,8 @@ export default function DashboardPage() {
         await Promise.all([
           fetchProperties(data.user.id),
           fetchDashboardSummary(),
-          fetchMaintenanceTickets(data.user.id)
+          fetchMaintenanceTickets(data.user.id),
+          fetchHandymen(),
         ]);
       } catch (err) {
         console.error('Auth check error:', err);
@@ -66,7 +79,7 @@ export default function DashboardPage() {
 
   const fetchProperties = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('properties')
         .select('*')
         .eq('landlord_id', userId)
@@ -95,27 +108,60 @@ export default function DashboardPage() {
   const fetchMaintenanceTickets = async (userId: string) => {
     try {
       if (userId === 'mock-landlord') return;
-      
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', userId)
-        .single();
-        
-      if (!profile) return;
-      
-      const { data, error } = await supabase
-        .from('maintenance_requests')
-        .select('*')
-        .eq('routed_to', profile.role)
-        .order('created_at', { ascending: false })
-        .limit(5);
-        
-      if (!error && data) {
-        setMaintenanceTickets(data);
+
+      // Calling /api/maintenance directly rather than through the db.from()
+      // shim, which only special-cases a handful of table names and would
+      // otherwise hit a nonexistent /api/maintenance_requests endpoint. The
+      // route itself already scopes results to tickets on this landlord's
+      // properties, so no extra client-side filtering is needed.
+      const res = await fetch('/api/maintenance', { credentials: 'include' });
+      if (!res.ok) return;
+
+      const { requests } = await res.json();
+      if (Array.isArray(requests)) {
+        setMaintenanceTickets(requests.slice(0, 5));
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const fetchHandymen = async () => {
+    try {
+      const res = await fetch('/api/handyman/list', { credentials: 'include' });
+      if (!res.ok) return;
+      const { handymen: list } = await res.json();
+      if (Array.isArray(list)) setHandymen(list);
+    } catch (err) {
+      console.error('Failed to fetch handymen:', err);
+    }
+  };
+
+  const assignHandyman = async (ticketId: string) => {
+    const handymanId = selectedHandyman[ticketId];
+    if (!handymanId) return;
+
+    setAssigningTicketId(ticketId);
+    try {
+      const res = await fetch(`/api/maintenance/${ticketId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ assigned_handyman_id: handymanId }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to assign handyman');
+      }
+
+      const { request: updated } = await res.json();
+      setMaintenanceTickets(prev => prev.map(t => (t.id === ticketId ? { ...t, ...updated } : t)));
+    } catch (err) {
+      console.error('Error assigning handyman:', err);
+      alert(`Failed to assign handyman: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setAssigningTicketId(null);
     }
   };
 
@@ -148,7 +194,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20">
       {/* Dashboard Header */}
-      <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+      <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 pt-20">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
            <h1 className="text-xl font-bold">Landlord Dashboard</h1>
            <div className="text-sm text-muted-foreground">{user?.email}</div>
@@ -253,21 +299,48 @@ export default function DashboardPage() {
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
                  <div className="divide-y divide-slate-200 dark:divide-slate-800">
                     {maintenanceTickets.map(ticket => (
-                       <div key={ticket.id} className="p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                       <div key={ticket.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                           <div>
                              <h3 className="font-semibold">{ticket.title}</h3>
                              <p className="text-sm text-muted-foreground mt-1">{ticket.description}</p>
                           </div>
-                          <div className="flex flex-col items-end gap-2">
-                             <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${
-                               ticket.priority === 'emergency' ? 'bg-red-100 text-red-800' :
-                               ticket.priority === 'high' ? 'bg-orange-100 text-orange-800' :
-                               ticket.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                               'bg-blue-100 text-blue-800'
-                             }`}>
-                               {ticket.priority}
-                             </span>
-                             <span className="text-xs font-medium text-slate-500 capitalize">{ticket.status.replace("_", " ")}</span>
+                          <div className="flex flex-col items-start sm:items-end gap-2 shrink-0">
+                             <div className="flex items-center gap-2">
+                               <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${
+                                 ticket.priority === 'emergency' ? 'bg-red-100 text-red-800' :
+                                 ticket.priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                                 ticket.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                 'bg-blue-100 text-blue-800'
+                               }`}>
+                                 {ticket.priority}
+                               </span>
+                               <span className="text-xs font-medium text-slate-500 capitalize">{ticket.status.replace("_", " ")}</span>
+                             </div>
+                             {ticket.assigned_handyman_id ? (
+                               <span className="text-xs font-medium text-green-700 dark:text-green-400">
+                                 Assigned to {handymen.find(h => h.id === ticket.assigned_handyman_id)?.full_name ?? 'a handyman'}
+                               </span>
+                             ) : (
+                               <div className="flex items-center gap-2">
+                                 <select
+                                   value={selectedHandyman[ticket.id] ?? ''}
+                                   onChange={e => setSelectedHandyman(prev => ({ ...prev, [ticket.id]: e.target.value }))}
+                                   className="text-xs rounded-md border border-input bg-background px-2 py-1"
+                                 >
+                                   <option value="" disabled>Assign handyman…</option>
+                                   {handymen.map(h => (
+                                     <option key={h.id} value={h.id}>{h.full_name}</option>
+                                   ))}
+                                 </select>
+                                 <button
+                                   onClick={() => assignHandyman(ticket.id)}
+                                   disabled={!selectedHandyman[ticket.id] || assigningTicketId === ticket.id}
+                                   className="text-xs font-medium bg-brand text-white px-3 py-1 rounded-md hover:bg-brand/90 disabled:opacity-50 transition-colors"
+                                 >
+                                   {assigningTicketId === ticket.id ? '...' : 'Assign'}
+                                 </button>
+                               </div>
+                             )}
                           </div>
                        </div>
                     ))}
@@ -299,29 +372,39 @@ export default function DashboardPage() {
            </div>
         ) : (
            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {properties.map(property => (
-                 <div key={property.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
-                    <div className="h-48 bg-slate-200 relative">
-                       {/* Placeholder for Image */}
-                       <div className="absolute inset-0 flex items-center justify-center text-slate-400">
-                          <Building2 className="h-12 w-12" />
-                       </div>
-                       <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">
-                          {property.status}
-                       </div>
-                    </div>
-                    <div className="p-5">
-                       <h3 className="font-bold text-lg mb-1 truncate">{property.title}</h3>
-                       <p className="text-slate-500 text-sm mb-4 truncate">{property.address}</p>
-                       <div className="flex items-center justify-between">
-                          <span className="font-bold text-lg">R {Number(property.price || 0).toLocaleString()}</span>
-                          <button className="text-indigo-600 text-sm font-medium hover:underline">
-                             Manage
-                          </button>
-                       </div>
-                    </div>
-                 </div>
-              ))}
+              {properties.map(property => {
+                 const propertyImage = Array.isArray(property.images) && property.images.length > 0
+                   ? property.images[0]
+                   : '/images/hero-apartment.png';
+
+                 return (
+                   <div key={property.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
+                      <div className="h-48 bg-slate-200 relative overflow-hidden">
+                         <img
+                           src={propertyImage}
+                           alt={property.title}
+                           className="h-full w-full object-cover"
+                           onError={(event) => {
+                             event.currentTarget.src = '/images/hero-apartment.png';
+                           }}
+                         />
+                         <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">
+                            {property.status}
+                         </div>
+                      </div>
+                      <div className="p-5">
+                         <h3 className="font-bold text-lg mb-1 truncate">{property.title}</h3>
+                         <p className="text-slate-500 text-sm mb-4 truncate">{property.address}</p>
+                         <div className="flex items-center justify-between">
+                            <span className="font-bold text-lg">R {Number(property.price || 0).toLocaleString()}</span>
+                            <button className="text-indigo-600 text-sm font-medium hover:underline">
+                               Manage
+                            </button>
+                         </div>
+                      </div>
+                   </div>
+                 );
+              })}
            </div>
         )}
       </main>

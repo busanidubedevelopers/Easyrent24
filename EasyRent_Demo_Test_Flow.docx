@@ -1,0 +1,130 @@
+EasyRent Demo Test Flow
+
+Purpose:
+This document is for a live end-to-end demo of the EasyRent rental workflow. It is designed to be printed and used as a test checklist during a client walkthrough.
+
+
+1. Environment Setup
+- Ensure Docker is running.
+- Start the local PostgreSQL database:
+  docker compose up -d db
+- Start the frontend app:
+  cd frontend
+  npm run dev
+- Confirm the app is available at:
+  http://localhost:3000
+
+
+2. Account Creation
+A. Create a Landlord Account
+- Go to /signup
+- Select Landlord
+- Enter a fresh email, full name, and password
+- Submit the form
+- Confirm the landlord lands on the dashboard
+
+B. Create a Tenant Account
+- Sign out from the landlord account
+- Create a new tenant account with a fresh email
+- Confirm the tenant lands on the tenant search flow
+
+C. Create a Handyman Account
+- Sign out again
+- Create a new handyman account
+- Enter services offered, experience, and certifications if applicable
+- Confirm the handyman lands on the handyman provider dashboard
+
+
+3. Landlord Property Listing
+- Sign in as the landlord
+- Open the dashboard
+- Click Create Listing / List Your Property
+- Enter:
+  - title
+  - address
+  - monthly rent
+  - bedrooms/bathrooms/size
+  - description
+  - property type
+- Upload at least one property image
+- Click Publish Listing
+- Confirm the listing appears in the landlord dashboard and in the property search flow
+
+Acceptance Criteria:
+- Listing is visible to the tenant
+- At least one uploaded image is visible on preview/search
+
+
+4. Tenant Property Search and Application
+- Sign in as the tenant
+- Open /find-home or property listing page
+- Search for the property
+- Open the property details
+- Click Apply
+- Complete the application form
+- Submit the application
+
+Acceptance Criteria:
+- Application is created successfully
+- Tenant sees confirmation status
+
+
+5. Landlord Application Review
+- Sign in as the landlord
+- Open the dashboard or applications view
+- Review the new application
+- Approve or review the applicant
+
+Acceptance Criteria:
+- Application status changes to approved or reviewed
+- Landlord can view applicant information
+
+
+6. Payment Flow
+- Sign in as the tenant
+- Open the application or payment step
+- Complete the payment/checkout process using the sandbox payment flow
+- Confirm payment status updates successfully
+
+Acceptance Criteria:
+- Payment page loads correctly
+- Payment is successfully processed in sandbox mode
+- Invoice / payment status reflects success
+
+
+7. Maintenance / Repair Request Flow
+- Sign in as the tenant
+- Submit a repair request or maintenance issue
+- Confirm the request is created
+- Sign in as the landlord
+- Open maintenance requests
+- Assign an available handyman
+- Sign in as the handyman
+- View assigned work request
+- Confirm the handyman dashboard shows the provider information and assigned work
+
+Acceptance Criteria:
+- Maintenance request is visible to landlord and handyman
+- Handyman can see assigned jobs
+- Assignment flow works end to end
+
+
+8. Final Demo Checklist
+- Fresh accounts created without seeded demo data
+- Landlord listing published with image preview
+- Tenant submits application
+- Landlord approves application
+- Payment completes in sandbox mode
+- Repair request created and assigned
+- Handyman sees role-specific dashboard
+- No fake overdue or demo data remains visible
+
+
+9. Demo Summary Script
+"We created a real landlord, tenant, and handyman account using the live app. The landlord listed a property, uploaded a real image, and published it. The tenant applied, the landlord reviewed and approved the application, and the tenant completed the sandbox payment. We then logged a maintenance request, assigned the handyman, and confirmed the service provider flow."
+
+
+10. Signoff
+Prepared by: EasyRent Demo Team
+Date: 2026-09-10
+Status: Ready for client demonstration

@@ -7,40 +7,20 @@ import {
   Check, 
   Clock, 
   Download, 
-  File, 
   FileText, 
-  MoreHorizontal, 
   Plus, 
   Send, 
   Trash2, 
   Upload
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
+import { LeaseList } from "@/components/LeaseList";
 
-// --- Mock Data ---
-
-const TENANTS = [
-  { id: 1, name: "Michael Foster", unit: "Unit 404", rent: 12500 },
-  { id: 2, name: "Sarah Jenkins", unit: "12 Greenway Dr", rent: 18000 },
-  { id: 3, name: "David Nkosi", unit: "Flat 5", rent: 8500 },
-];
-
-const INVOICE_HISTORY = [
-  { id: "INV-001", tenant: "Michael Foster", date: "2026-02-01", amount: 14200, status: "Sent" },
-  { id: "INV-002", tenant: "Sarah Jenkins", date: "2026-02-01", amount: 19500, status: "Paid" },
-  { id: "INV-003", tenant: "David Nkosi", date: "2026-02-01", amount: 9200, status: "Overdue" },
-];
-
-const CONTRACTS = [
-  { id: 1, tenant: "Michael Foster", unit: "Unit 404", type: "Residential Lease", status: "Active", expiry: "2026-11-30", file: "lease_foster_2025.pdf" },
-  { id: 2, tenant: "Sarah Jenkins", unit: "12 Greenway Dr", type: "Residential Lease", status: "Expiring Soon", expiry: "2026-04-30", file: "lease_jenkins_2025.pdf" },
-];
-
-const DOCUMENTS = [
-  { id: 1, name: "Plumbing Invoice - Feb", type: "Invoice", provider: "QuickFix Plumbers", date: "2026-02-02", size: "1.2 MB" },
-  { id: 2, name: "Electrical COC", type: "Certificate", provider: "Sparky Bros", date: "2026-01-15", size: "2.4 MB" },
-  { id: 3, name: "Garden Service Contract", type: "Contract", provider: "GreenThumb", date: "2025-12-01", size: "0.8 MB" },
-];
+// Demo data is intentionally empty so the documents center starts with a clean, live-state empty view.
+const TENANTS: Array<{ id: number; name: string; unit: string; rent: number }> = [];
+const INVOICE_HISTORY: Array<{ id: string; tenant: string; date: string; amount: number; status: string }> = [];
+const DOCUMENTS: Array<{ id: number; name: string; type: string; provider: string; date: string; size: string }> = [];
 
 export default function DocumentsPage() {
   const [activeTab, setActiveTab] = useState("invoices"); // invoices, contracts, storage
@@ -48,6 +28,8 @@ export default function DocumentsPage() {
 
   // Invoice Builder State
   const [selectedTenant, setSelectedTenant] = useState<number | null>(null);
+  const [recipientId, setRecipientId] = useState('');
+  const [isSubmittingInvoice, setIsSubmittingInvoice] = useState(false);
   const [invoiceItems, setInvoiceItems] = useState([
     { description: "Monthly Rent", amount: 0, locked: true },
     { description: "Water Usage", amount: 0, locked: false },
@@ -102,22 +84,52 @@ export default function DocumentsPage() {
     );
   };
 
-  const handleCreateInvoice = () => {
+  const handleCreateInvoice = async () => {
     if (deliveryMethods.length === 0) {
        setNotification("Please select at least one delivery method.");
        setTimeout(() => setNotification(null), 3000);
        return;
     }
-    const methods = deliveryMethods.map(m => m.toUpperCase()).join(" & ");
-    setNotification(`Invoice generated and sent via ${methods}${autoSchedule ? ' (Scheduled)' : ''}.`);
-    setTimeout(() => setNotification(null), 3000);
-  };
 
-  const handleExtendContract = (tenantName: string) => {
-     if(confirm(`Would you like to generate a lease extension addendum for ${tenantName}?`)) {
-        setNotification(`Addendum generated for ${tenantName}. Sent for digital signature.`);
-        setTimeout(() => setNotification(null), 3000);
-     }
+    if (!recipientId.trim()) {
+      setNotification('Enter a valid tenant user ID (UUID) to create the invoice.');
+      setTimeout(() => setNotification(null), 3000);
+      return;
+    }
+
+    try {
+      setIsSubmittingInvoice(true);
+      const response = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recipient_id: recipientId,
+          line_items: invoiceItems.map((item) => ({
+            description: item.description || 'Charge',
+            amount: Number(item.amount) || 0,
+            locked: Boolean(item.locked),
+          })),
+          due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create invoice');
+      }
+
+      const methods = deliveryMethods.map(m => m.toUpperCase()).join(' & ');
+      const invoiceNumber = data.invoice?.invoice_number || data.invoice?.id || 'invoice';
+      setNotification(`Invoice ${invoiceNumber} created and queued via ${methods}${autoSchedule ? ' (Scheduled)' : ''}.`);
+      setTimeout(() => setNotification(null), 4000);
+    } catch (error) {
+      console.error('Invoice create error:', error);
+      setNotification((error as Error)?.message || 'Invoice creation failed.');
+      setTimeout(() => setNotification(null), 4000);
+    } finally {
+      setIsSubmittingInvoice(false);
+    }
   };
 
   return (
@@ -132,7 +144,7 @@ export default function DocumentsPage() {
       )}
 
       {/* Header */}
-      <div className="bg-white dark:bg-slate-900 border-b border-border py-8">
+      <div className="bg-white dark:bg-slate-900 border-b border-border pt-20 pb-8">
          <div className="container mx-auto px-4">
             <h1 className="text-3xl font-bold tracking-tight mb-2">Documents Centre</h1>
             <p className="text-muted-foreground">Manage invoices, contracts, and service provider records.</p>
@@ -220,7 +232,10 @@ export default function DocumentsPage() {
                         <label className="text-sm font-medium">Select Tenant</label>
                         <select 
                            className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-                           onChange={(e) => handleTenantSelect(e.target.value)}
+                           onChange={(e) => {
+                              handleTenantSelect(e.target.value);
+                              setRecipientId((TENANTS.find((tenant) => tenant.id === Number(e.target.value)) as any)?.id ? String((TENANTS.find((tenant) => tenant.id === Number(e.target.value)) as any)?.id) : '');
+                           }}
                            defaultValue=""
                         >
                            <option value="" disabled>Choose a tenant...</option>
@@ -228,6 +243,16 @@ export default function DocumentsPage() {
                               <option key={t.id} value={t.id}>{t.name} ({t.unit})</option>
                            ))}
                         </select>
+                     </div>
+
+                     <div className="space-y-2">
+                        <label className="text-sm font-medium">Tenant User ID (UUID)</label>
+                        <input
+                          value={recipientId}
+                          onChange={(e) => setRecipientId(e.target.value)}
+                          placeholder="Paste the tenant user UUID here"
+                          className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+                        />
                      </div>
 
                      {/* Line Items */}
@@ -327,11 +352,11 @@ export default function DocumentsPage() {
                      <div className="pt-2">
                         <button 
                            onClick={handleCreateInvoice}
-                           disabled={!selectedTenant}
+                           disabled={isSubmittingInvoice}
                            className="w-full bg-brand text-white h-11 rounded-md font-medium hover:bg-brand/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
                            <Send className="h-4 w-4" />
-                           {autoSchedule ? "Save & Schedule" : "Create & Send Invoice"}
+                           {isSubmittingInvoice ? 'Creating...' : autoSchedule ? "Save & Schedule" : "Create & Send Invoice"}
                         </button>
                      </div>
 
@@ -378,63 +403,9 @@ export default function DocumentsPage() {
         {/* --- CONTRACTS TAB --- */}
         {activeTab === "contracts" && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {CONTRACTS.map((contract) => (
-                   <div key={contract.id} className="bg-white dark:bg-slate-900 rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
-                      {contract.status === "Expiring Soon" && (
-                         <div className="absolute top-0 right-0 bg-orange-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg">
-                            ACTION NEEDED
-                         </div>
-                      )}
-                      
-                      <div className="flex items-start justify-between mb-4">
-                         <div className="h-10 w-10 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600">
-                             <File className="h-5 w-5" />
-                         </div>
-                         <button className="text-muted-foreground hover:text-foreground">
-                            <MoreHorizontal className="h-5 w-5" />
-                         </button>
-                      </div>
-                      
-                      <h3 className="font-bold text-lg mb-1">{contract.tenant}</h3>
-                      <p className="text-sm text-muted-foreground mb-4">{contract.unit}</p>
-                      
-                      <div className="space-y-2 mb-6">
-                         <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Type</span>
-                            <span className="font-medium">{contract.type}</span>
-                         </div>
-                         <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Expires</span>
-                            <span className={cn("font-medium", contract.status === "Expiring Soon" ? "text-orange-600" : "")}>{contract.expiry}</span>
-                         </div>
-                      </div>
-
-                      <div className="flex gap-2">
-                         <button className="flex-1 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 py-2 rounded-md text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center justify-center gap-2">
-                            <Download className="h-3 w-3" /> PDF
-                         </button>
-                         {contract.status === "Expiring Soon" && (
-                            <button 
-                              onClick={() => handleExtendContract(contract.tenant)}
-                              className="flex-1 bg-brand text-white py-2 rounded-md text-sm font-medium hover:bg-brand/90 transition-colors"
-                            >
-                               Renew
-                            </button>
-                         )}
-                      </div>
-                   </div>
-                ))}
-
-                {/* Upload New Contract Card */}
-                <div className="border-2 border-dashed border-border rounded-xl p-6 flex flex-col items-center justify-center text-center hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors cursor-pointer group">
-                   <div className="h-12 w-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-muted-foreground group-hover:bg-white group-hover:text-brand transition-colors shadow-sm mb-4">
-                      <Upload className="h-6 w-6" />
-                   </div>
-                   <h3 className="font-semibold mb-1">Upload New Contract</h3>
-                   <p className="text-sm text-muted-foreground">Drag and drop signed lease agreements here</p>
-                </div>
-             </div>
+             <LeaseList
+               emptyMessage={<>No leases yet. Approve an application in <Link href="/applications" className="text-brand underline">Applications</Link> to generate one.</>}
+             />
           </div>
         )}
 

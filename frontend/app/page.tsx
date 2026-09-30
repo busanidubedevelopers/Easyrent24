@@ -83,7 +83,7 @@ export default function Home() {
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.8, duration: 1, type: "spring", stiffness: 50 }}
-            className="mt-20 md:mt-32 relative mx-auto max-w-5xl rounded-2xl glass-heavy p-2 shadow-2xl lg:p-4"
+            className="mt-20 md:mt-32 relative mx-auto max-w-5xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2 shadow-2xl lg:p-4"
           >
             <div className="aspect-[16/9] overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-border/50 relative group">
                <Image 

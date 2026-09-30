@@ -8,11 +8,13 @@ Shared backend logic, DB migrations, and tests for EasyRent24. This is
 
 ```
 backend/
-├── migrations/     SQL migrations, applied manually via Supabase SQL Editor
 ├── lib/            Framework-agnostic backend logic, imported by frontend/app/api/**
+│                   (db.ts + postgresClient.ts: the PostgreSQL data layer)
 ├── docs/           This kind of documentation
-└── tests/          (reserved for Phase 1, Task 10 — unit tests)
+└── tests/          Unit tests (vitest)
 ```
+
+The database schema lives in `../db/init/*.sql` (see `docs/ENVIRONMENT.md`).
 
 ## How this connects to frontend/
 
@@ -32,31 +34,20 @@ ancestor directories). That means the same package can silently resolve to
 *different versions* in each folder depending on exactly when `npm install`
 last ran in each one.
 
-This already bit us once during Phase 1: `frontend`'s lockfile had
-`@supabase/supabase-js@2.95.3` pinned, but a fresh `npm install` in `backend/`
-resolved the caret range to `2.112.3` — a newer version with a slightly
-different internal type shape. TypeScript then refused to accept a
-frontend-created Supabase client as a valid argument to a backend function
-expecting the "same" type, because as far as TS was concerned, they weren't
-the same type.
-
-**The fix that's in place:** `backend/package.json` pins
-`@supabase/supabase-js` to the *exact* version frontend uses (no `^`), so
-both resolve identically.
-
-**What this means going forward:** if you ever bump the Supabase SDK version
-in `frontend/package.json`, update `backend/package.json` to match exactly,
-then `rm -rf backend/node_modules && npm install` in `backend/`. If you skip
-this, you'll get a confusing TypeScript error about a missing internal
-property (e.g. `_getSessionToken`) — that error means "version mismatch
-between frontend and backend's copies of this package," not an actual bug in
-your code.
-
-The permanent fix for this class of bug is npm/pnpm workspaces (a single
-hoisted `node_modules` shared by both folders) — worth doing if this project
-grows much further, but pinning is a reasonable trade-off for now.
+**Keep shared packages on the same version in both folders** (`pg`, `zod`,
+`jose`, `bcryptjs`, `pdf-lib`). A mismatch shows up as confusing TypeScript
+errors about "incompatible" types that are really the same type from two
+copies of a package. After bumping one side, update the other to match and
+reinstall. The permanent fix is npm/pnpm workspaces (one hoisted
+`node_modules`).
 
 ## What's been built (Phase 1)
+
+> Historical build log. Phase 1 was built on Supabase; the app has since
+> moved to plain PostgreSQL (`lib/db.ts`, `lib/postgresClient.ts`), JWT
+> cookie sessions and local file storage, and the `migrations/` folder was
+> replaced by `db/init/`. File and function names below are from that era
+> (e.g. `supabaseAdmin.ts` is now `adminDb.ts`).
 
 - ✅ Task 3: DB schema (`migrations/002_phase1_core_tables.sql`) — tested
   against a real local Postgres instance, including RLS enforcement tests

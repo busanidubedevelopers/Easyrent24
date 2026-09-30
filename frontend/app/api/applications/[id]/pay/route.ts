@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { getAuthenticatedProfile, ForbiddenError } from '@backend/lib/auth';
-import { getSupabaseAdmin } from '@backend/lib/supabaseAdmin';
+import { getAdminDb } from '@backend/lib/adminDb';
 import { toErrorResponse } from '@backend/lib/apiError';
 import { buildPaymentRequest, PAYFAST_URLS, type PayfastMode } from '@backend/lib/payfast';
 import { isValidUUID } from '@/lib/validation';
 import { checkRateLimit, getRateLimitHeaders } from '@backend/lib/security/rateLimiter';
+import { browserReturnBase } from '@/lib/appUrl';
+import { paymentProvider } from '@backend/lib/demoGateway';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -31,8 +33,8 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    const profile = await getAuthenticatedProfile(db);
 
     const rateLimit = await checkRateLimit(profile.id, 'PAYMENTS');
     if (!rateLimit.allowed) {
@@ -42,7 +44,7 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const { data: application, error: fetchError } = await supabase
+    const { data: application, error: fetchError } = await db
       .from('applications')
       .select('id, applicant_id, application_fee_amount, payment_status, first_name, last_name')
       .eq('id', id)
@@ -62,6 +64,33 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'This application fee has already been paid.' }, { status: 400 });
     }
 
+    const amount = Number(application.application_fee_amount);
+    const mPaymentId = `APP-${application.id}-${Date.now()}`;
+    const provider = paymentProvider();
+    const itemName = 'EasyRent24 Application Fee';
+
+    // Demo mode: our own in-app gateway (EasyRent Pay) instead of PayFast.
+    if (provider === 'demo') {
+      const { error: demoInsertError } = await getAdminDb().from('payments').insert([
+        {
+          application_id: application.id,
+          m_payment_id: mPaymentId,
+          amount_gross: amount,
+          status: 'pending',
+          provider: 'demo',
+          item_name: `${itemName} - ${application.first_name} ${application.last_name}`,
+          return_url: `/apply/payment-success?application_id=${id}`,
+          cancel_url: `/apply/payment-cancelled?application_id=${id}`,
+        },
+      ]);
+      if (demoInsertError) {
+        console.error(`POST /api/applications/${id}/pay: DB insert error`, demoInsertError);
+        return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 });
+      }
+      await db.from('applications').update({ payment_status: 'pending' }).eq('id', id);
+      return NextResponse.json({ processUrl: '/api/payments/demo/start', fields: { reference: mPaymentId } });
+    }
+
     const merchantId = process.env.PAYFAST_MERCHANT_ID;
     const merchantKey = process.env.PAYFAST_MERCHANT_KEY;
     const passphrase = process.env.PAYFAST_PASSPHRASE;
@@ -76,13 +105,10 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const amount = Number(application.application_fee_amount);
-    const mPaymentId = `APP-${application.id}-${Date.now()}`;
-
     // Use the admin client for writing the payment record — an applicant
     // has no INSERT policy on `payments` at all (migration 005, deliberately),
     // so this MUST go through the service-role client, not the user's own.
-    const admin = getSupabaseAdmin();
+    const admin = getAdminDb();
     const { error: insertError } = await admin.from('payments').insert([
       {
         application_id: application.id,
@@ -97,18 +123,18 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 });
     }
 
-    await supabase.from('applications').update({ payment_status: 'pending' }).eq('id', id);
+    await db.from('applications').update({ payment_status: 'pending' }).eq('id', id);
 
     const fields = buildPaymentRequest({
       merchantId,
       merchantKey,
       passphrase,
-      returnUrl: `${appUrl}/apply/payment-success?application_id=${id}`,
-      cancelUrl: `${appUrl}/apply/payment-cancelled?application_id=${id}`,
+      returnUrl: `${browserReturnBase(appUrl)}/apply/payment-success?application_id=${id}`,
+      cancelUrl: `${browserReturnBase(appUrl)}/apply/payment-cancelled?application_id=${id}`,
       notifyUrl: `${appUrl}/api/payments/payfast/notify`,
       mPaymentId,
       amount,
-      itemName: 'EasyRent24 Application Fee',
+      itemName,
       itemDescription: `Application fee for ${application.first_name} ${application.last_name}`,
       nameFirst: application.first_name,
       nameLast: application.last_name,

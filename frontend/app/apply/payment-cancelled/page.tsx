@@ -18,7 +18,7 @@ function CancelContent() {
         
         <h1 className="text-2xl font-bold tracking-tight mb-2">Payment Cancelled</h1>
         <p className="text-sm text-muted-foreground mb-6">
-          The PayFast transaction was cancelled. No funds were charged to your account.
+          The payment was cancelled. No funds were charged to your account.
         </p>
 
         {applicationId && (

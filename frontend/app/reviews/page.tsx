@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { db } from '@/lib/apiClient';
 import { Star, MessageSquare, User, Shield, ThumbsUp, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 type Review = {
@@ -39,7 +39,7 @@ export default function ReviewsPage() {
   const fetchReviews = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('reviews')
         .select('*')
         .order('created_at', { ascending: false });
@@ -96,13 +96,13 @@ export default function ReviewsPage() {
     };
 
     try {
-      const { error: submitError } = await supabase
+      const { error: submitError } = await db
         .from('reviews')
         .insert([newReview])
         .select();
 
       if (submitError) {
-        console.warn('Error submitting review to Supabase:', submitError);
+        console.warn('Error submitting review:', submitError);
       }
 
       // Optimistic UI update

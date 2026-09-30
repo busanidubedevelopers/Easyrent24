@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Building2, Eye, EyeOff, Loader2, Mail, Lock } from "lucide-react";
-
-import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
 export default function SigninPage() {
@@ -25,26 +23,45 @@ export default function SigninPage() {
     setIsLoading(true);
 
     try {
-       const { error } = await supabase.auth.signInWithPassword({
+      const response = await fetch('/api/auth/signin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
           email: formData.email,
           password: formData.password,
-       });
+        }),
+      });
 
-       if (error) throw error;
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Invalid email or password');
+      }
 
-       // If successful, redirect to dashboard or home
-       router.push("/");
-       router.refresh(); // Refresh to update auth state across app
+      const role = data.profile?.role || data.user?.role || 'tenant';
+      const params = new URLSearchParams(window.location.search);
+      // Honour ?redirect_to= (set by middleware and the invite signup flow),
+      // but only for same-site paths — never an absolute or protocol-relative URL.
+      const requested = params.get('redirect_to');
+      const redirectTo =
+        requested && requested.startsWith('/') && !requested.startsWith('//') && !requested.startsWith('/\\') ? requested : null;
+
+      if (redirectTo) {
+        router.push(redirectTo);
+      } else if (role === 'admin') {
+        router.push('/admin/accounts');
+      } else if (role === 'landlord') {
+        router.push('/dashboard');
+      } else {
+        router.push('/find-home');
+      }
+      router.refresh();
     } catch (error) {
-       console.error("Signin error:", error);
-       const errMessage = (error as Error)?.message;
-       if (errMessage?.includes("Invalid login credentials")) {
-         alert("Invalid login credentials. Please check your password or confirm your email address.");
-       } else {
-         alert(errMessage || "Failed to sign in.");
-       }
+      console.error('Signin error:', error);
+      const errMessage = (error as Error)?.message;
+      alert(errMessage || 'Failed to sign in. Please check your credentials.');
     } finally {
-       setIsLoading(false);
+      setIsLoading(false);
     }
   }
 

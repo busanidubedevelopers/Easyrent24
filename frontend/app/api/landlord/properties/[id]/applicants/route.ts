@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { getAuthenticatedProfile, ForbiddenError } from '@backend/lib/auth';
 import { toErrorResponse } from '@backend/lib/apiError';
 import { rankApplicantsByRisk, type RankOrder } from '@backend/lib/landlordDashboard';
@@ -29,10 +29,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    const profile = await getAuthenticatedProfile(db);
 
-    const { data: property, error: propertyError } = await supabase
+    const { data: property, error: propertyError } = await db
       .from('properties')
       .select('id, landlord_id, title')
       .eq('id', id)
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       throw new ForbiddenError('You can only view applicants for your own properties.');
     }
 
-    const { data: applicants, error: applicantsError } = await supabase
+    const { data: applicants, error: applicantsError } = await db
       .from('applications')
       .select('id, first_name, last_name, status, risk_score, risk_level, monthly_income, created_at')
       .eq('property_id', id);

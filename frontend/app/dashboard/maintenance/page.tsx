@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Wrench, Plus, Loader2, AlertCircle } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/apiClient";
 
 interface MaintenanceRequest {
   id: string;
@@ -38,11 +38,11 @@ export default function TenantMaintenancePage() {
 
   async function fetchData() {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await db.auth.getUser();
       if (!user) return;
 
       // 1. Fetch user's requests
-      const { data: reqs } = await supabase
+      const { data: reqs } = await db
         .from("maintenance_requests")
         .select("*")
         .eq("tenant_id", user.id)
@@ -52,7 +52,7 @@ export default function TenantMaintenancePage() {
 
       // 2. Fetch properties the user is renting (Mocking this for the UI, 
       // in reality this would query a leases or rentals table)
-      const { data: props } = await supabase
+      const { data: props } = await db
         .from("properties")
         .select("id, title")
         .limit(3);

@@ -42,11 +42,11 @@ const nextConfig: NextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: https:",
+              "img-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*",
               "font-src 'self'",
               "object-src 'none'",
-              // Allow WebSocket connections (Next.js dev HMR) and Supabase API calls.
-              "connect-src 'self' wss: https://*.supabase.co https://sandbox.payfast.co.za https://www.payfast.co.za",
+              // Allow WebSocket connections (Next.js dev HMR) and PayFast.
+              "connect-src 'self' ws: wss: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:* https://sandbox.payfast.co.za https://www.payfast.co.za",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self' https://sandbox.payfast.co.za https://www.payfast.co.za",

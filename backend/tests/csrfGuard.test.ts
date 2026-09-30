@@ -33,6 +33,15 @@ describe('CSRF & Origin Verification Guard', () => {
     expect(res.valid).toBe(true);
   });
 
+  it('allows localhost dev requests without Origin headers for local end-to-end testing', () => {
+    const headers = {
+      host: 'localhost:3000',
+    };
+
+    const res = verifyCsrfOrigin('POST', headers, '/api/auth/signup');
+    expect(res.valid).toBe(true);
+  });
+
   it('blocks state-changing requests with unauthorized cross-origin', () => {
     const headers = {
       origin: 'https://attacker-phishing-site.com',

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerDb } from '@/lib/serverDb';
 import { getAuthenticatedProfile, ForbiddenError } from '@backend/lib/auth';
-import { getSupabaseAdmin } from '@backend/lib/supabaseAdmin';
+import { getAdminDb } from '@backend/lib/adminDb';
 import { toErrorResponse } from '@backend/lib/apiError';
 import { DOCUMENT_TYPES, type DocumentType } from '@backend/lib/applications';
 import { isValidUUID } from '@/lib/validation';
+import { query } from '@backend/lib/db';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -32,10 +33,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const supabase = await getSupabaseServerClient();
-    const profile = await getAuthenticatedProfile(supabase);
+    const db = await getServerDb();
+    const profile = await getAuthenticatedProfile(db);
 
-    const { data: application, error: fetchError } = await supabase
+    const { data: application, error: fetchError } = await db
       .from('applications')
       .select('applicant_id, documents')
       .eq('id', id)
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const admin = getSupabaseAdmin();
+    const admin = getAdminDb();
     const ext = file.name.split('.').pop() || 'pdf';
     const path = `${profile.id}/${id}/${documentType}-${Date.now()}.${ext}`;
 
@@ -91,25 +92,32 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 });
     }
 
-    // Bucket is private — store the storage path, not a public URL. Reading
-    // it back later requires a signed URL (created on demand, short-lived),
-    // not a permanent public link.
-    const updatedDocuments = {
-      ...((application.documents as Record<string, string>) ?? {}),
-      [documentType]: path,
-    };
-
-    const updateFields: Record<string, unknown> = { documents: updatedDocuments };
-    if (documentType === 'payslip') {
-      updateFields.payslip_url = path; // keep legacy column in sync
+    // Bucket is private — store the storage path (plus enough metadata to
+    // serve it back with the right Content-Type), not a public URL. Reading
+    // it back goes through GET .../documents/[type] below, which checks the
+    // caller is the applicant, the property's landlord, or an admin before
+    // streaming the bytes.
+    // Merge just this document's entry in one atomic statement. The apply page
+    // uploads the ID, payslip and bank statement in parallel; reading the
+    // whole map, adding a key and writing it back lets one upload overwrite
+    // another (a document silently disappears from the application).
+    const entry = JSON.stringify({ path, contentType: file.type, filename: file.name });
+    let updated: Record<string, unknown> | null = null;
+    let updateError: unknown = null;
+    try {
+      const result = await query(
+        `UPDATE public.applications
+            SET documents = COALESCE(documents, '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb),
+                payslip_url = CASE WHEN $2 = 'payslip' THEN $4 ELSE payslip_url END,
+                updated_at = timezone('utc'::text, now())
+          WHERE id = $1
+          RETURNING *`,
+        [id, documentType, entry, path]
+      );
+      updated = result.rows[0] ?? null;
+    } catch (err) {
+      updateError = err;
     }
-
-    const { data: updated, error: updateError } = await supabase
-      .from('applications')
-      .update(updateFields)
-      .eq('id', id)
-      .select()
-      .single();
 
     if (updateError) {
       console.error(`POST /api/applications/${id}/documents: DB update error`, updateError);

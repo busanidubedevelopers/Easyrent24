@@ -5,7 +5,6 @@ import Image from "next/image";
 import { Search, Plus, MapPin, Clock, Filter, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabaseClient";
 
 interface HandymanItem {
   id: string;
@@ -18,41 +17,108 @@ interface HandymanItem {
   image: string;
 }
 
+interface HandymanProfile {
+  id?: string;
+  full_name?: string | null;
+  role?: string;
+  services_offered?: string[];
+  experience_years?: number;
+  certifications?: string[];
+  phone?: string | null;
+}
+
+interface AssignedTicket {
+  id: string;
+  title: string;
+  description: string;
+  priority: "low" | "medium" | "high" | "emergency";
+  status: "pending" | "in_progress" | "resolved" | "closed";
+  created_at: string;
+}
+
 export default function HandymanDashboard() {
-  const [activeTab, setActiveTab] = useState("client"); // client or provider
+  const [activeTab, setActiveTab] = useState("client");
   const [jobs, setJobs] = useState<HandymanItem[]>([]);
+  const [profile, setProfile] = useState<HandymanProfile | null>(null);
+  const [assignedTickets, setAssignedTickets] = useState<AssignedTicket[]>([]);
+  const [resolvingTicketId, setResolvingTicketId] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchJobs() {
-       try {
-          const { data, error } = await supabase
-             .from('handyman_jobs')
-             .select('*')
-             .order('created_at', { ascending: false });
-          if (!error && data) {
-             setJobs(data.map(job => ({
-                id: job.id,
-                title: job.title,
-                category: job.category || 'General',
-                location: job.location,
-                budget: job.budget_range || 'TBD',
-                posted: new Date(job.created_at).toLocaleDateString(),
-                status: job.status,
-                image: (job.images && job.images.length > 0) ? job.images[0] : "/images/handyman-tools.png"
-             })));
-          } else {
-             setJobs([]);
+    async function loadDashboard() {
+      try {
+        const [meRes, jobsRes, maintenanceRes] = await Promise.all([
+          fetch('/api/auth/me', { credentials: 'include' }),
+          fetch('/api/handyman/jobs', { credentials: 'include' }),
+          fetch('/api/maintenance', { credentials: 'include' }),
+        ]);
+
+        if (meRes.ok) {
+          const meJson = await meRes.json();
+          const nextProfile = meJson.profile ?? null;
+          setProfile(nextProfile);
+          if (nextProfile?.role === 'handyman') {
+            setActiveTab('provider');
           }
-       } catch (err) {
-          console.error("Error fetching jobs:", err);
+        }
+
+        if (jobsRes.ok) {
+          const json = await jobsRes.json();
+          const data: any[] = json.jobs ?? [];
+          setJobs(data.map((job: any) => ({
+             id: job.id,
+             title: job.title,
+             category: job.category || 'General',
+             location: job.location,
+             budget: job.budget_range || 'TBD',
+             posted: new Date(job.created_at).toLocaleDateString(),
+             status: job.status,
+             image: (job.images && job.images.length > 0) ? job.images[0] : "/images/handyman-tools.png"
+          })));
+        } else {
           setJobs([]);
-       }
+        }
+
+        if (maintenanceRes.ok) {
+          const json = await maintenanceRes.json();
+          setAssignedTickets(json.requests ?? []);
+        } else {
+          setAssignedTickets([]);
+        }
+      } catch (err) {
+        console.error('Error loading handyman dashboard:', err);
+        setJobs([]);
+        setAssignedTickets([]);
+      }
     }
-    fetchJobs();
+    loadDashboard();
   }, []);
 
+  const markTicketResolved = async (ticketId: string) => {
+    setResolvingTicketId(ticketId);
+    try {
+      const res = await fetch(`/api/maintenance/${ticketId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'resolved' }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to update ticket');
+      }
+
+      setAssignedTickets(prev => prev.map(t => (t.id === ticketId ? { ...t, status: 'resolved' } : t)));
+    } catch (err) {
+      console.error('Error resolving ticket:', err);
+      alert(`Failed to mark resolved: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setResolvingTicketId(null);
+    }
+  };
+
   return (
-    <div className="container py-8 md:py-12">
+    <div className="container pt-20 pb-8 md:pb-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Handyman Services</h1>
@@ -167,12 +233,89 @@ export default function HandymanDashboard() {
         </div>
       ) : (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+           <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-white p-5 shadow-sm dark:border-indigo-500/30 dark:from-slate-900 dark:to-slate-950">
+             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+               <div>
+                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-400">Service provider</p>
+                 <h3 className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{profile?.full_name || 'Professional Handyman'}</h3>
+               </div>
+               <div className="rounded-full bg-indigo-600 px-3 py-1 text-sm font-semibold text-white">
+                 {profile?.role === 'handyman' ? 'Available' : 'Provider'}
+               </div>
+             </div>
+
+             <div className="mt-4 grid gap-3 md:grid-cols-3">
+               <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                 <p className="text-xs uppercase tracking-wide text-slate-500">Services</p>
+                 <p className="mt-2 text-sm font-medium text-slate-900 dark:text-slate-100">
+                   {(profile?.services_offered && profile.services_offered.length > 0)
+                     ? profile.services_offered.join(', ')
+                     : 'General maintenance'}
+                 </p>
+               </div>
+               <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                 <p className="text-xs uppercase tracking-wide text-slate-500">Experience</p>
+                 <p className="mt-2 text-sm font-medium text-slate-900 dark:text-slate-100">
+                   {profile?.experience_years ? `${profile.experience_years} years` : 'New provider'}
+                 </p>
+               </div>
+               <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                 <p className="text-xs uppercase tracking-wide text-slate-500">Certifications</p>
+                 <p className="mt-2 text-sm font-medium text-slate-900 dark:text-slate-100">
+                   {(profile?.certifications && profile.certifications.length > 0)
+                     ? profile.certifications.join(', ')
+                     : 'Not added yet'}
+                 </p>
+               </div>
+             </div>
+           </div>
+
+           {/* Assigned Maintenance Tickets — landlord assigned these directly, no bidding involved */}
+           {assignedTickets.length > 0 && (
+             <div>
+               <h3 className="font-semibold text-xl mb-4">Assigned to You</h3>
+               <div className="grid gap-4">
+                 {assignedTickets.map(ticket => (
+                   <div key={ticket.id} className="flex flex-col md:flex-row gap-4 rounded-xl border border-border bg-card p-4">
+                     <div className="flex-1">
+                       <div className="flex items-center gap-2 mb-1">
+                         <h4 className="font-bold text-lg">{ticket.title}</h4>
+                         <span className={cn(
+                           "px-2.5 py-0.5 rounded-full text-xs font-bold uppercase",
+                           ticket.priority === 'emergency' ? 'bg-red-100 text-red-800' :
+                           ticket.priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                           ticket.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                           'bg-blue-100 text-blue-800'
+                         )}>
+                           {ticket.priority}
+                         </span>
+                       </div>
+                       <p className="text-sm text-muted-foreground line-clamp-2 max-w-2xl">{ticket.description}</p>
+                     </div>
+                     <div className="flex flex-col items-end justify-center min-w-[150px] gap-2">
+                       <span className="text-xs font-medium text-slate-500 capitalize">{ticket.status.replace('_', ' ')}</span>
+                       {ticket.status !== 'resolved' && ticket.status !== 'closed' && (
+                         <button
+                           onClick={() => markTicketResolved(ticket.id)}
+                           disabled={resolvingTicketId === ticket.id}
+                           className="inline-flex items-center justify-center rounded-md bg-brand px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand/90 disabled:opacity-50"
+                         >
+                           {resolvingTicketId === ticket.id ? '...' : 'Mark Resolved'}
+                         </button>
+                       )}
+                     </div>
+                   </div>
+                 ))}
+               </div>
+             </div>
+           )}
+
            {/* Provider View */}
            <div className="flex flex-col md:flex-row gap-4 mb-6">
               <div className="relative flex-1">
                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                 <input 
-                   placeholder="Search jobs by keyword..." 
+                 <input
+                   placeholder="Search jobs by keyword..."
                    className="w-full h-10 rounded-md border border-input pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                  />
               </div>
@@ -180,7 +323,7 @@ export default function HandymanDashboard() {
                  <Filter className="mr-2 h-4 w-4" /> Filters
               </button>
            </div>
-           
+
            <div className="grid gap-4">
               {jobs.map((job) => (
                  <div key={job.id} className="flex flex-col md:flex-row gap-4 rounded-xl border border-border bg-card p-4 hover:border-brand/40 transition-colors group">

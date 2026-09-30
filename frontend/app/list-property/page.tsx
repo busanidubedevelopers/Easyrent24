@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Building2, MapPin, DollarSign, Home, Maximize, Upload, X, ImageIcon } from 'lucide-react';
 import MarketPriceComparison from '@/components/MarketPriceComparison';
-import { supabase } from '@/lib/supabaseClient';
+import { db } from '@/lib/apiClient';
 
 export default function ListPropertyPage() {
+  const router = useRouter();
   const [formData, setFormData] = useState({
     title: '',
     address: '',
@@ -76,89 +78,69 @@ export default function ListPropertyPage() {
   const handleSubmission = async (status: 'draft' | 'published') => {
     try {
       if (!formData.title || !formData.address || !formData.price) {
-         alert("Please fill in at least the Title, Address and Price.");
-         return;
-      }
-
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        // Fallback to local storage for demo purposes
-        const existingMockStr = localStorage.getItem('mock_properties');
-        const existingMock = existingMockStr ? JSON.parse(existingMockStr) : [];
-        const newProperty = {
-           id: "MOCK-" + Math.floor(Math.random() * 10000).toString(),
-           title: formData.title,
-           address: formData.address,
-           price: parseFloat(formData.price) || 0,
-        };
-        localStorage.setItem('mock_properties', JSON.stringify([...existingMock, newProperty]));
-        alert(`Listing ${status === 'published' ? 'published' : 'saved'} successfully (Demo Mode)!`);
+        alert('Please fill in at least the Title, Address and Price.');
         return;
       }
 
-      // 1. Ensure Profile Exists (Fix for foreign key constraint)
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', user.id)
-        .single();
-
-      if (!profileData) {
-         // Create profile if missing
-         const { error: createProfileError } = await supabase
-            .from('profiles')
-            .insert([{
-               id: user.id,
-               full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || "Landlord",
-               role: 'landlord'
-            }]);
-         
-         if (createProfileError) {
-             console.error("Error creating missing profile:", createProfileError);
-             throw createProfileError;
-         }
+      const meResponse = await fetch('/api/auth/me', { credentials: 'include' });
+      if (!meResponse.ok) {
+        alert('Please sign in as a landlord before listing a property.');
+        return;
       }
 
-      // 2. Create Property
-      const { data: propertyData, error } = await supabase
-        .from('properties')
-        .insert([
-          {
-            landlord_id: user.id,
-            title: formData.title,
-            address: formData.address,
-            price: parseFloat(formData.price),
-            bedrooms: parseFloat(formData.bedrooms) || 0,
-            bathrooms: parseFloat(formData.bathrooms) || 0,
-            size_m2: parseFloat(formData.size) || 0,
-            description: formData.description,
-            property_type: formData.propertyType,
-            status: status
-          }
-        ])
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
+      const meData = await meResponse.json();
+      const user = meData.user;
+      if (!user || !['landlord', 'admin'].includes(user.role)) {
+        alert('Only landlords can create listings.');
+        return;
       }
 
-      // 3. Upload images if any were selected
-      if (propertyData && imageFiles.length > 0) {
+      const propertyPayload = {
+        title: formData.title,
+        address: formData.address,
+        price: Number(formData.price),
+        bedrooms: Number(formData.bedrooms) || null,
+        bathrooms: Number(formData.bathrooms) || null,
+        size_m2: Number(formData.size) || null,
+        description: formData.description,
+        property_type: formData.propertyType,
+        status,
+      };
+
+      const propertyResponse = await fetch('/api/properties', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(propertyPayload),
+      });
+
+      const propertyJson = await propertyResponse.json();
+      if (!propertyResponse.ok) {
+        throw new Error(propertyJson.error || 'Failed to create property');
+      }
+
+      if (imageFiles.length > 0 && propertyJson.property?.id) {
         for (const file of imageFiles) {
-          const filePath = `${propertyData.id}/${Date.now()}_${file.name}`;
-          const { error: uploadError } = await supabase.storage
-            .from('property-images')
-            .upload(filePath, file, { contentType: file.type });
-          if (uploadError) {
-            console.error('Image upload error:', uploadError);
+          const filePath = `${propertyJson.property.id}/${Date.now()}_${file.name}`;
+          const uploadResponse = await fetch(`/api/properties/${propertyJson.property.id}/images`, {
+            method: 'POST',
+            credentials: 'include',
+            body: (() => {
+              const fd = new FormData();
+              fd.append('file', file, file.name);
+              fd.append('path', filePath);
+              return fd;
+            })(),
+          });
+
+          if (!uploadResponse.ok) {
+            console.error('Image upload error for property:', await uploadResponse.text());
           }
         }
       }
 
       alert(`Listing ${status === 'published' ? 'published' : 'saved'} successfully!`);
-      // TODO: Redirect to listing page or dashboard
+      router.push('/dashboard');
     } catch (error) {
       console.error('Error creating listing:', error);
       alert(`Error creating listing: ${(error as Error)?.message || 'Unknown error'}`);
@@ -168,7 +150,7 @@ export default function ListPropertyPage() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 pb-20">
       {/* Header */}
-      <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-10">
+      <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 sticky top-20 mt-20 z-10">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/" className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
@@ -178,24 +160,10 @@ export default function ListPropertyPage() {
               List Your Property
             </h1>
           </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => handleSubmission('draft')}
-              className="text-sm font-medium text-muted-foreground hover:text-foreground px-3 py-2"
-            >
-              Save Draft
-            </button>
-            <button 
-              onClick={() => handleSubmission('published')}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-full transition-colors shadow-lg shadow-indigo-500/20"
-            >
-              Publish Listing
-            </button>
-          </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-5xl">
+      <main className="container mx-auto px-4 py-8 max-w-5xl pb-28">
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Form Column */}
           <div className="lg:col-span-2 space-y-6">
@@ -431,6 +399,25 @@ export default function ListPropertyPage() {
           </div>
         </div>
       </main>
+
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
+        <div className="container mx-auto flex max-w-5xl items-center justify-end gap-3 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => handleSubmission('draft')}
+            className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            Save Draft
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSubmission('published')}
+            className="rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 transition-colors hover:bg-indigo-700"
+          >
+            Publish Listing
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

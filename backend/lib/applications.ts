@@ -1,5 +1,19 @@
+/**
+ * The one fee every tenant pays, in rand: R150, paid once at registration
+ * through the invite link from their agent/landlord. It covers their
+ * applications, so a tenant who has paid it isn't charged again. A tenant
+ * who somehow applies without having paid it is charged it on the
+ * application instead.
+ */
+export const TENANT_FEE_ZAR = 150;
+/** Kept as a name for the fee when it's charged on an application. */
+export const APPLICATION_FEE_ZAR = TENANT_FEE_ZAR;
+
 export type ApplicationStatus = 'pending' | 'reviewing' | 'approved' | 'declined' | 'cancelled';
-export type DocumentType = 'payslip' | 'id_document' | 'bank_statement';
+/** The three kinds of supporting document. */
+export type BaseDocumentType = 'payslip' | 'id_document' | 'bank_statement';
+/** A document slot on an application: the main applicant's, or the co-applicant's (`co_` prefix). */
+export type DocumentType = BaseDocumentType | `co_${BaseDocumentType}`;
 
 export const APPLICATION_STATUSES: ApplicationStatus[] = [
   'pending',
@@ -9,7 +23,26 @@ export const APPLICATION_STATUSES: ApplicationStatus[] = [
   'cancelled',
 ];
 
-export const DOCUMENT_TYPES: DocumentType[] = ['payslip', 'id_document', 'bank_statement'];
+export const BASE_DOCUMENT_TYPES: BaseDocumentType[] = ['payslip', 'id_document', 'bank_statement'];
+export const DOCUMENT_TYPES: DocumentType[] = [
+  ...BASE_DOCUMENT_TYPES,
+  ...BASE_DOCUMENT_TYPES.map((t) => `co_${t}` as const),
+];
+
+/**
+ * A document entry in `applications.documents`: either a bare storage path
+ * (older rows) or `{ path, contentType, filename }` (current uploads).
+ */
+export type StoredDocument = string | { path: string; contentType?: string; filename?: string };
+
+export function storedDocumentPath(entry: StoredDocument | null | undefined): string | null {
+  if (!entry) return null;
+  return typeof entry === 'string' ? entry : entry.path ?? null;
+}
+
+export function baseDocumentType(type: DocumentType): BaseDocumentType {
+  return type.replace(/^co_/, '') as BaseDocumentType;
+}
 
 /**
  * Allowed status transitions. Applicants can only ever move their own
@@ -43,6 +76,7 @@ export interface ApplicationInput {
   job_title?: string;
   employment_type?: string;
   monthly_income?: number;
+  current_rent?: number | null;
   consent_credit?: boolean;
   consent_id_check?: boolean;
   consent_bank_statements?: boolean;
@@ -103,6 +137,13 @@ export function validateApplicationInput(input: ApplicationInput): ValidationRes
     (typeof input.monthly_income !== 'number' || input.monthly_income < 0)
   ) {
     errors.push('Monthly income must be a non-negative number.');
+  }
+  if (
+    input.current_rent !== undefined &&
+    input.current_rent !== null &&
+    (typeof input.current_rent !== 'number' || input.current_rent < 0)
+  ) {
+    errors.push('Current rent must be a non-negative number.');
   }
 
   return { valid: errors.length === 0, errors };
