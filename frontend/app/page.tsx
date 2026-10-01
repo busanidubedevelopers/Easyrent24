@@ -48,37 +48,37 @@ export default function Home() {
             animate="show"
             className="flex flex-col items-center gap-6 text-center lg:gap-10"
           >
-            <motion.div variants={itemVariants} className="inline-flex items-center rounded-full border border-indigo-200/50 bg-white/20 backdrop-blur-md px-4 py-1.5 text-sm font-medium text-foreground dark:border-indigo-800/50 dark:bg-black/30 dark:text-indigo-300 shadow-xl">
-              <span className="flex h-2 w-2 rounded-full bg-brand mr-2 animate-pulse"></span>
-              The Rental Revolution is Here
+            <motion.div variants={itemVariants} className="inline-flex items-center rounded-full border border-brand-200 bg-white/70 backdrop-blur-md px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-brand-900 shadow-soft">
+              <span className="flex h-2 w-2 rounded-full bg-gold mr-2 animate-pulse"></span>
+              Rental platform for South Africa
             </motion.div>
             
-            <motion.h1 variants={itemVariants} className="text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl md:text-6xl lg:text-7xl max-w-4xl drop-shadow-xl">
-              Rent with Confidence. <br className="hidden md:inline" /> Manage with Ease.
+            <motion.h1 variants={itemVariants} className="font-serif text-4xl font-bold tracking-tight text-brand-900 sm:text-5xl md:text-6xl lg:text-7xl max-w-4xl drop-shadow-sm">
+              Rent with Confidence. <br className="hidden md:inline" /> Manage with <span className="italic text-gold">Ease.</span>
             </motion.h1>
             
             <motion.p variants={itemVariants} className="max-w-2xl text-lg font-medium text-foreground/80 sm:text-xl md:text-xl drop-shadow-lg">
-              EasyRent simplifies the rental lifecycle. From verified credit reports to trusted handyman services, we connect landlords, tenants, and professionals in one premium marketplace.
+              Easy Rent 24 brings the rental journey together: verified tenant applications, clear affordability checks, digital leases and handyman services, for landlords, agents and tenants.
             </motion.p>
             
             <motion.div variants={itemVariants} className="flex flex-col w-full sm:flex-row justify-center gap-4 mt-6">
               <Link 
                 href="/find-home"
-                className="inline-flex h-14 items-center justify-center rounded-full bg-gradient-to-r from-brand via-indigo-500 to-cyan-500 px-8 text-base font-bold text-white shadow-[0_8px_30px_rgba(79,70,229,0.4)] transition-all duration-300 hover:shadow-[0_8px_40px_rgba(79,70,229,0.6)] hover:-translate-y-1 hover:scale-105"
+                className="inline-flex h-14 items-center justify-center rounded-full bg-brand-900 px-8 text-base font-bold text-white shadow-lg transition-all duration-300 hover:bg-gold-600 hover:shadow-glow hover:-translate-y-1"
               >
                 Start Renting
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Link>
               <Link 
                 href="/list-property"
-                className="inline-flex h-14 items-center justify-center rounded-full border border-white/40 bg-white/10 backdrop-blur-md px-8 text-base font-bold text-foreground transition-all duration-300 hover:bg-white/20 hover:-translate-y-1 hover:shadow-lg shadow-xl"
+                className="inline-flex h-14 items-center justify-center rounded-full border-2 border-brand-900 bg-white/80 backdrop-blur-md px-8 text-base font-bold text-brand-900 transition-all duration-300 hover:border-gold-600 hover:text-gold-700 hover:-translate-y-1 shadow-soft"
               >
                 List Your Property
               </Link>
             </motion.div>
           </motion.div>
           
-          {/* Dashboard Preview */}
+          {/* Showcase photo */}
           <motion.div 
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
@@ -87,8 +87,8 @@ export default function Home() {
           >
             <div className="aspect-[16/9] overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-border/50 relative group">
                <Image 
-                 src="/images/dashboard-preview.png" 
-                 alt="EasyRent Dashboard Preview" 
+                 src="/images/hero-apartment.png" 
+                 alt="A modern living room in a rental apartment" 
                  fill
                  className="object-cover transition-transform duration-1000 group-hover:scale-105"
                />
@@ -99,8 +99,8 @@ export default function Home() {
                  transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
                  className="absolute bottom-6 right-6 bg-white/90 dark:bg-black/80 backdrop-blur px-5 py-3 rounded-xl shadow-2xl border border-border/50 flex items-center gap-3"
                >
-                  <div className="h-3 w-3 rounded-full bg-green-500 animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.7)]" />
-                  <span className="text-sm font-bold tracking-wide">Live System Demo</span>
+                  <div className="h-3 w-3 rounded-full bg-gold animate-pulse shadow-glow" />
+                  <span className="text-sm font-bold tracking-wide text-brand-900">Apply and sign your lease online</span>
                </motion.div>
             </div>
           </motion.div>
@@ -133,12 +133,12 @@ export default function Home() {
         >
           {/* Feature 1 */}
           <motion.div variants={itemVariants} className="card-premium p-8 group hover:-translate-y-2 transition-all duration-300 shadow-lg hover:shadow-2xl">
-            <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand/20 to-cyan-500/20 text-brand transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3 shadow-inner">
+            <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand/20 to-cyan-500/20 text-gold-600 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3 shadow-inner">
               <ShieldCheck className="h-7 w-7" />
             </div>
-            <h3 className="mb-3 text-xl font-bold group-hover:text-brand transition-colors">Credit Reports</h3>
+            <h3 className="mb-3 text-xl font-bold group-hover:text-gold-600 transition-colors">Tenant Due Diligence</h3>
             <p className="text-muted-foreground leading-relaxed">
-              Instant, secure credit checks for potential tenants. Landlords get peace of mind; tenants get approved faster.
+              Each applicant&apos;s ID, payslip and bank statement are checked and summarised in a due diligence report, with a clear affordability recommendation.
             </p>
           </motion.div>
           
@@ -177,67 +177,53 @@ export default function Home() {
              variants={containerVariants}
              className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4 text-center"
            >
+             {/* Facts about how the product works — no invented usage numbers. */}
              <motion.div variants={itemVariants} className="flex flex-col gap-2">
-               <h4 className="text-4xl font-bold text-brand">10k+</h4>
-               <p className="text-sm font-medium text-muted-foreground tracking-wide uppercase">Active Listings</p>
+               <h4 className="text-4xl font-bold text-brand">3</h4>
+               <p className="text-sm font-medium text-muted-foreground tracking-wide uppercase">Documents verified per tenant</p>
              </motion.div>
              <motion.div variants={itemVariants} className="flex flex-col gap-2">
-               <h4 className="text-4xl font-bold text-brand">98%</h4>
-               <p className="text-sm font-medium text-muted-foreground tracking-wide uppercase">Verified Tenants</p>
+               <h4 className="text-4xl font-bold text-brand">6</h4>
+               <p className="text-sm font-medium text-muted-foreground tracking-wide uppercase">Due diligence checks</p>
              </motion.div>
              <motion.div variants={itemVariants} className="flex flex-col gap-2">
-               <h4 className="text-4xl font-bold text-brand">5k+</h4>
-               <p className="text-sm font-medium text-muted-foreground tracking-wide uppercase">Trusted Handymen</p>
+               <h4 className="text-4xl font-bold text-brand">33%</h4>
+               <p className="text-sm font-medium text-muted-foreground tracking-wide uppercase">Rent-to-income guideline</p>
              </motion.div>
               <motion.div variants={itemVariants} className="flex flex-col gap-2">
-               <h4 className="text-4xl font-bold text-brand">4.9/5</h4>
-               <p className="text-sm font-medium text-muted-foreground tracking-wide uppercase">User Rating</p>
+               <h4 className="text-4xl font-bold text-brand">R150</h4>
+               <p className="text-sm font-medium text-muted-foreground tracking-wide uppercase">One tenant fee</p>
              </motion.div>
            </motion.div>
         </div>
       </section>
 
-      {/* Press & Preferred Sources Section (SEO E-E-A-T Booster) */}
+      {/* Who stands behind the product. Only true claims here. */}
       <section className="border-b border-border bg-white dark:bg-black py-12 relative overflow-hidden">
         <div className="container mx-auto px-4 lg:px-6 relative z-10 text-center">
-           <p className="text-sm font-semibold tracking-widest text-muted-foreground uppercase mb-8">
-              Recognized as a Preferred Source by
+           <p className="text-sm font-semibold tracking-widest text-muted-foreground uppercase mb-6">
+              Recognized by
            </p>
-           <motion.div 
+           <motion.div
              initial="hidden"
              whileInView="show"
              viewport={{ once: true }}
-             variants={containerVariants}
-             className="flex flex-wrap justify-center items-center gap-8 md:gap-16 opacity-70 grayscale hover:grayscale-0 transition-all duration-500"
+             variants={itemVariants}
+             className="text-2xl md:text-3xl font-extrabold tracking-tight text-foreground"
            >
-              {/* Note: In a real app, these would be actual SVG logos. We use stylized text for the demo. */}
-              <motion.div variants={itemVariants} className="text-xl md:text-2xl font-black font-serif tracking-tighter">
-                Forbes
-              </motion.div>
-              <motion.div variants={itemVariants} className="text-xl md:text-2xl font-bold tracking-tight text-green-700 dark:text-green-500">
-                TechCrunch
-              </motion.div>
-              <motion.div variants={itemVariants} className="text-xl md:text-2xl font-extrabold text-blue-600">
-                Property<span className="font-light">Insider</span>
-              </motion.div>
-              <motion.div variants={itemVariants} className="text-xl md:text-2xl font-bold tracking-widest uppercase">
-                Bloomberg
-              </motion.div>
-              <motion.div variants={itemVariants} className="text-xl md:text-2xl font-bold font-mono">
-                WSJ
-              </motion.div>
+              Dube <span className="text-brand">Developers</span>
            </motion.div>
         </div>
       </section>
 
-      {/* Testimonial Spotlight */}
+      {/* Tenant spotlight: what the product does for tenants (no invented testimonials) */}
       <section className="container mx-auto px-4 py-16 lg:px-6">
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.7 }}
-          className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand via-indigo-700 to-cyan-600 text-white shadow-[0_20px_50px_rgba(79,70,229,0.3)] border border-white/20"
+          className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-900 via-brand-800 to-brand-700 text-white shadow-[0_20px_50px_rgba(15,23,42,0.3)] border border-white/20"
         >
           <div className="absolute inset-0 bg-[url('/images/hero-apartment.png')] bg-cover bg-center opacity-10 mix-blend-overlay"></div>
           <motion.div 
@@ -249,24 +235,24 @@ export default function Home() {
           <div className="relative z-10 grid gap-8 p-8 md:p-12 lg:grid-cols-2 items-center glass-light border-0 rounded-none bg-transparent dark:bg-transparent shadow-none">
             <div className="order-2 lg:order-1 space-y-6">
                <div className="inline-flex items-center rounded-full bg-indigo-400/30 border border-indigo-200/30 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-indigo-50">
-                  Tenant Success Story
+                  For Tenants
                </div>
-               <blockquote className="space-y-4">
+               <div className="space-y-4">
                   <p className="text-xl md:text-2xl font-medium leading-relaxed drop-shadow-md">
-                    &quot;I was struggling to find a place that accepted my credit profile. EasyRent verified my income directly, and I got approved for my dream apartment in 2 days. The handyman service for moving help was a bonus!&quot;
+                    A fair assessment, even if you&apos;ve never rented before. EasyRent reads what your payslip and bank statement actually show, including side income, and gives the landlord a clear, explainable recommendation.
                   </p>
-                  <footer className="flex items-center gap-4 pt-4">
-                    <div className="font-bold text-lg">Sarah Jenkins</div>
-                    <div className="text-indigo-200 text-sm font-medium">Tenant since 2024</div>
-                  </footer>
-               </blockquote>
+                  <div className="flex items-center gap-4 pt-4">
+                    <div className="font-bold text-lg">One R150 fee</div>
+                    <div className="text-indigo-200 text-sm font-medium">Covers your application. Sign your lease online.</div>
+                  </div>
+               </div>
             </div>
             
             <div className="order-1 lg:order-2 flex justify-center lg:justify-end">
                <div className="relative h-64 w-64 md:h-80 md:w-80 overflow-hidden rounded-full border-4 border-white/20 shadow-2xl">
                   <Image 
                     src="/images/happy-tenant.png" 
-                    alt="Happy Tenant Sarah" 
+                    alt="A tenant in their new home" 
                     fill
                     className="object-cover"
                   />
@@ -338,7 +324,7 @@ export default function Home() {
                </motion.ul>
                
                <motion.div variants={itemVariants} className="mt-6">
-                  <Link href="#" className="inline-flex h-14 items-center justify-center rounded-xl bg-brand px-8 text-sm font-bold text-white shadow-lg transition-all hover:bg-brand/90 hover:scale-105 hover:shadow-brand/30">
+                  <Link href="#" className="inline-flex h-14 items-center justify-center rounded-xl bg-brand px-8 text-sm font-bold text-white shadow-lg transition-all hover:bg-gold-600 hover:scale-105 hover:shadow-brand/30">
                     Find a Pro <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                </motion.div>
@@ -362,7 +348,7 @@ export default function Home() {
               Ready to Simplify Your Rentals?
             </h2>
             <p className="text-lg text-indigo-100">
-              Join thousands of happy landlords, tenants, and professionals on EasyRent today.
+              Join the landlords, agents, tenants and handymen using EasyRent.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 mt-6">
                <Link 

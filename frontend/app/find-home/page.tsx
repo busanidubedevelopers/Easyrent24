@@ -277,7 +277,7 @@ export default function FindHome() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full h-12 bg-brand hover:bg-brand/90 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/25 transition-all hover:scale-[1.01] flex items-center justify-center gap-2"
+                  className="w-full h-12 bg-brand hover:bg-gold-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/25 transition-all hover:scale-[1.01] flex items-center justify-center gap-2"
                 >
                   {loading ? (
                     <>

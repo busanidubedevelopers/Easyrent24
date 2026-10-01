@@ -157,7 +157,13 @@ function applicantChecks(
   now: Date,
   keyPrefix: string,
   labelPrefix: string
-): { checks: VerificationCheck[]; verifiedIncome: number | null; incomeSource: VerificationSummary['income_source'] } {
+): {
+  checks: VerificationCheck[];
+  verifiedIncome: number | null;
+  incomeSource: VerificationSummary['income_source'];
+  /** Declared other income the bank statement confirms, on top of verifiedIncome. */
+  otherCounted: number;
+} {
   const checks: VerificationCheck[] = [];
   const add = (key: string, label: string, status: CheckStatus, detail: string) =>
     checks.push({ key: keyPrefix + key, label: labelPrefix + label, status, detail });
@@ -204,6 +210,8 @@ function applicantChecks(
 
   // ── Income ────────────────────────────────────────────────────────────────
   let verifiedIncome: number | null = null;
+  let incomeIsOther = false;
+  let otherSeenOnStatement = 0;
   let incomeSource: VerificationSummary['income_source'] = null;
 
   if (!payslip) {
@@ -250,11 +258,13 @@ function applicantChecks(
 
     const bankIncome = averageMonthlyBankIncome(bank);
     const otherSeen = monthlyOtherCredits(bank);
+    otherSeenOnStatement = otherSeen;
     if (bankIncome === null && otherSeen > 0 && declared.other_income_total) {
       add('bank_income', 'Income visible on statement', 'pass', `No salary deposits; income comes from other sources (${formatRand(otherSeen)}/month on average).`);
       if (verifiedIncome === null) {
         verifiedIncome = Math.min(otherSeen, declared.other_income_total);
         incomeSource = 'bank_statement';
+        incomeIsOther = true;
       }
     } else if (bankIncome === null) {
       add('bank_income', 'Income visible on statement', 'warn', 'No salary or regular income deposits found.');
@@ -309,7 +319,10 @@ function applicantChecks(
     );
   }
 
-  return { checks, verifiedIncome, incomeSource };
+  // Other income counts as far as the statement shows it (as in affordability.ts),
+  // unless it already is the verified income (applicant without a salary).
+  const otherCounted = incomeIsOther ? 0 : Math.min(otherDeclared, otherSeenOnStatement);
+  return { checks, verifiedIncome, incomeSource, otherCounted };
 }
 
 export function verifyApplication(
@@ -324,8 +337,8 @@ export function verifyApplication(
   const checks = [...main.checks, ...(co?.checks ?? [])];
 
   // ── Affordability (household income) ─────────────────────────────────────
-  const mainIncome = main.verifiedIncome ?? declared.monthly_income;
-  const coIncome = coApplicant ? co!.verifiedIncome ?? coApplicant.declared.monthly_income : null;
+  const mainIncome = (main.verifiedIncome ?? declared.monthly_income ?? 0) + main.otherCounted;
+  const coIncome = coApplicant ? (co!.verifiedIncome ?? coApplicant.declared.monthly_income ?? 0) + co!.otherCounted : null;
   const householdIncome = (mainIncome ?? 0) + (coIncome ?? 0);
   const fullyVerified = main.verifiedIncome !== null && (!coApplicant || co!.verifiedIncome !== null);
 

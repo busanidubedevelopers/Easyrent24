@@ -93,7 +93,7 @@ export function LeaseList({ emptyMessage }: { emptyMessage: React.ReactNode }) {
             </dl>
 
             <div className="flex gap-2 mt-auto">
-              <Link href={href} className="flex-1 bg-brand text-white py-2 rounded-md text-sm font-medium hover:bg-brand/90 transition-colors text-center">
+              <Link href={href} className="flex-1 bg-brand text-white py-2 rounded-md text-sm font-medium hover:bg-gold-600 transition-colors text-center">
                 {lease.role === "tenant" && lease.status === "sent" ? "Review & sign" : "Open"}
               </Link>
               {lease.status !== "cancelled" && (

@@ -42,10 +42,10 @@ All seeded accounts use the password **`Password123!`**
 
 | Account | Role | Unlocks |
 | :--- | :--- | :--- |
-| `landlord@demo.com` | Landlord | Dashboard (incl. assigning handymen to tickets), applications, collections, documents, financing, list-property |
-| `tenant@demo.com` | Tenant | Apply, checkout, reviews, reporting a maintenance issue |
-| `handyman@demo.com` | Handyman | Handyman board, tickets assigned to them, "Post a Job" bidding board |
-| `agent@demo.com` | Landlord (agency) | Same as landlord |
+| `landlord@easyrent24.co.za` | Landlord | Dashboard (incl. assigning handymen to tickets), applications, collections, documents, financing, list-property |
+| `tenant@easyrent24.co.za` | Tenant | Apply, checkout, reviews, reporting a maintenance issue |
+| `handyman@easyrent24.co.za` | Handyman | Handyman board, tickets assigned to them, "Post a Job" bidding board |
+| `agent@easyrent24.co.za` | Landlord (agency) | Same as landlord |
 
 > ⚠️ **Routes are role-gated.** Opening a landlord page while signed in as a tenant
 > silently redirects to `/signin`. Sign in as the role listed below *before*
@@ -112,14 +112,14 @@ All seeded accounts use the password **`Password123!`**
   - Show the role selector: **Tenant**, **Landlord**, or **Agent**.
   - Click **"Agent"** to demonstrate the dynamic **"Agency / Company Name"** field (e.g., *Prestige Realty*).
   - Create a test account live (use a fresh address, e.g. `demo+live@easyrent.com`, password: `Password123!`).
-  - *Or* skip creating one and sign in with the seeded `landlord@demo.com` / `Password123!`.
+  - *Or* skip creating one and sign in with the seeded `landlord@easyrent24.co.za` / `Password123!`.
 - **Script**:
   > *"The platform supports distinct permission profiles for Tenants, Landlords, and Agency Brokers. Security is handled via Supabase with encrypted passwords and server-side HTTP session cookies."*
 
 ---
 
 ### Stage 3: Digital Tenant Screening & Application
-- **Action**: Open `http://localhost:3000/apply` (sign in as `tenant@demo.com` first).
+- **Action**: Open `http://localhost:3000/apply` (sign in as `tenant@easyrent24.co.za` first).
 - **Demo Highlights**:
   - Step 1: Personal info & SA ID number — **use `9001015000085`** (a
     known-valid test ID) so Stage 5's assessment shows a clean "Verified" result.
@@ -152,7 +152,7 @@ All seeded accounts use the password **`Password123!`**
 ---
 
 ### Stage 5: Due Diligence, Risk Audit & Lease Generation
-- **Sign in as `landlord@demo.com`**, then open `http://localhost:3000/applications`.
+- **Sign in as `landlord@easyrent24.co.za`**, then open `http://localhost:3000/applications`.
 - **The application from Stage 3 is here.** The moment the page loads, it
   silently runs a real risk assessment on any application that doesn't have
   one yet — South African ID checksum validation and a rent-to-income
@@ -168,7 +168,7 @@ All seeded accounts use the password **`Password123!`**
       you straight into the lease workflow for that applicant.
     - Or click **"Decline"** to show the automated **Regret Letter Generator**.
   - **To show both paths in one sitting**: submit a second application in a
-    separate tab as `tenant@demo.com` (or a fresh signup) with a low income
+    separate tab as `tenant@easyrent24.co.za` (or a fresh signup) with a low income
     against an expensive property — it'll land here as a High-risk case ready
     to decline, alongside the first as a clean approval.
 - **Note — real credit bureau, not a stub**: the risk score is an honest
@@ -217,13 +217,13 @@ All seeded accounts use the password **`Password123!`**
 Walk the ticket through all three roles in one pass — this is the story to tell:
 tenant reports → landlord triages and assigns → handyman closes it out.
 
-- **Sign in as `tenant@demo.com`**, open `http://localhost:3000/maintenance`, and
+- **Sign in as `tenant@easyrent24.co.za`**, open `http://localhost:3000/maintenance`, and
   log an issue (priority: Plumbing / Electrical / Emergency). It's confirmed
   instantly and shows up in the tenant's own request list.
-- **Sign in as `landlord@demo.com`**, open `http://localhost:3000/dashboard`,
+- **Sign in as `landlord@easyrent24.co.za`**, open `http://localhost:3000/dashboard`,
   and scroll to **Active Maintenance Tickets**. The ticket just submitted is
-  there — pick **Demo Handyman** from the dropdown and click **Assign**.
-- **Sign in as `handyman@demo.com`**, open `http://localhost:3000/handyman`
+  there — pick **Johan van Wyk** from the dropdown and click **Assign**.
+- **Sign in as `handyman@easyrent24.co.za`**, open `http://localhost:3000/handyman`
   (lands on the "I'm a Pro" tab), and show the ticket under **Assigned to
   You**. Click **Mark Resolved** to close the loop.
 - **Optional — the other maintenance system**: still on `/handyman`, scroll to

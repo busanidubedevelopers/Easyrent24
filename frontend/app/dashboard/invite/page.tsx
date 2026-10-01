@@ -21,6 +21,8 @@ interface SentInvite {
   expires_at: string;
   created_at: string;
   properties: { title: string } | null;
+  /** Present while the tenant hasn't signed up yet; uses the app's current address. */
+  link: string | null;
 }
 
 const STATUS_LABELS: Record<SentInvite["status"], { label: string; className: string }> = {
@@ -102,6 +104,19 @@ export default function InviteTenantPage() {
       setError(err instanceof Error ? err.message : "Failed to create invite");
     } finally {
       setIsSending(false);
+    }
+  };
+
+  // Optional: re-send a pending invite's link (e.g. after the app's address changed).
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copyInviteLink = async (inv: SentInvite) => {
+    if (!inv.link) return;
+    try {
+      await navigator.clipboard.writeText(inv.link);
+      setCopiedId(inv.id);
+      setTimeout(() => setCopiedId((id) => (id === inv.id ? null : id)), 2000);
+    } catch {
+      window.prompt("Copy this registration link:", inv.link);
     }
   };
 
@@ -199,7 +214,7 @@ export default function InviteTenantPage() {
                  <button
                     type="submit"
                     disabled={isSending || !selectedProperty}
-                    className="bg-brand text-white px-8 py-3 rounded-md font-bold flex items-center gap-2 hover:bg-brand/90 transition-all shadow-md disabled:opacity-50"
+                    className="bg-brand text-white px-8 py-3 rounded-md font-bold flex items-center gap-2 hover:bg-gold-600 transition-all shadow-md disabled:opacity-50"
                  >
                     {isSending ? "Creating Invite..." : (
                       <>
@@ -254,7 +269,7 @@ export default function InviteTenantPage() {
                   </button>
                   <button
                     onClick={resetForm}
-                    className="w-full sm:w-auto px-6 py-3 rounded-md bg-brand text-white font-medium flex items-center justify-center gap-2 hover:bg-brand/90 transition-colors"
+                    className="w-full sm:w-auto px-6 py-3 rounded-md bg-brand text-white font-medium flex items-center justify-center gap-2 hover:bg-gold-600 transition-colors"
                   >
                      Create Another Invite
                   </button>
@@ -278,7 +293,20 @@ export default function InviteTenantPage() {
                       <p className="font-medium truncate">{inv.invitee_name} <span className="text-muted-foreground font-normal">· {inv.invitee_email}</span></p>
                       <p className="text-sm text-muted-foreground truncate">{inv.properties?.title ?? "Property removed"} · {formatRand(inv.admin_fee_amount)}</p>
                     </div>
-                    <span className={`shrink-0 text-xs font-medium px-2.5 py-1 rounded-full ${badge.className}`}>{badge.label}</span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {inv.link && (
+                        <button
+                          type="button"
+                          onClick={() => copyInviteLink(inv)}
+                          title="Copy the registration link to send it again"
+                          className="inline-flex items-center gap-1 rounded-md border border-input px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors"
+                        >
+                          {copiedId === inv.id ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                          {copiedId === inv.id ? "Copied" : "Copy link"}
+                        </button>
+                      )}
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${badge.className}`}>{badge.label}</span>
+                    </div>
                   </li>
                 );
               })}

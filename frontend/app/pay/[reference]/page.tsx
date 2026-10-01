@@ -31,11 +31,10 @@ const inputClass =
   "w-full h-11 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand";
 
 /**
- * EasyRent Pay: the demo card checkout that stands in for PayFast when
- * PAYMENT_PROVIDER=demo. Only the test card approves; every other card is
- * declined by the "bank".
+ * EasyRent Pay checkout, used instead of PayFast when PAYMENT_PROVIDER=demo.
+ * The prototype accepts FNB cards only; cards from other banks are declined.
  */
-export default function DemoCheckoutPage() {
+export default function CheckoutPage() {
   const { reference } = useParams<{ reference: string }>();
   const [payment, setPayment] = useState<PaymentInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -108,7 +107,7 @@ export default function DemoCheckoutPage() {
 
         <div className="rounded-2xl border border-border bg-card shadow-lg overflow-hidden">
           <div className="rounded-none bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 px-5 py-2 text-xs font-medium">
-            Demo payment. No real money is taken.
+            Prototype payment. No real money is taken.
           </div>
 
           {loadError ? (
@@ -226,7 +225,7 @@ export default function DemoCheckoutPage() {
               <button
                 type="submit"
                 disabled={busy !== null || payment.attempts_left === 0}
-                className="w-full inline-flex h-11 items-center justify-center gap-2 rounded-md bg-brand px-6 text-sm font-medium text-white hover:bg-brand/90 transition-colors disabled:opacity-50"
+                className="w-full inline-flex h-11 items-center justify-center gap-2 rounded-md bg-brand px-6 text-sm font-medium text-white hover:bg-gold-600 transition-colors disabled:opacity-50"
               >
                 {busy === "pay" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
                 {busy === "pay" ? "Processing…" : `Pay ${rand(payment.amount)}`}

@@ -24,7 +24,7 @@ export default function EscrowCancelledPage() {
         <div className="flex flex-col gap-3">
           <Link
             href={`/handyman/job/${jobId}`}
-            className="inline-flex h-10 items-center justify-center rounded-md bg-brand px-6 text-sm font-medium text-white hover:bg-brand/90 transition-colors"
+            className="inline-flex h-10 items-center justify-center rounded-md bg-brand px-6 text-sm font-medium text-white hover:bg-gold-600 transition-colors"
           >
             <RefreshCw className="mr-2 h-4 w-4" /> Try Again
           </Link>

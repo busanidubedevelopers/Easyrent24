@@ -335,7 +335,7 @@ export default function DashboardPage() {
                                  <button
                                    onClick={() => assignHandyman(ticket.id)}
                                    disabled={!selectedHandyman[ticket.id] || assigningTicketId === ticket.id}
-                                   className="text-xs font-medium bg-brand text-white px-3 py-1 rounded-md hover:bg-brand/90 disabled:opacity-50 transition-colors"
+                                   className="text-xs font-medium bg-brand text-white px-3 py-1 rounded-md hover:bg-gold-600 disabled:opacity-50 transition-colors"
                                  >
                                    {assigningTicketId === ticket.id ? '...' : 'Assign'}
                                  </button>

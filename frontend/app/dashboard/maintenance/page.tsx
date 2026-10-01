@@ -190,7 +190,7 @@ export default function TenantMaintenancePage() {
                 <button 
                   type="submit" 
                   disabled={isSubmitting || properties.length === 0}
-                  className="w-full inline-flex items-center justify-center rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 transition-colors disabled:opacity-50"
+                  className="w-full inline-flex items-center justify-center rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-gold-600 transition-colors disabled:opacity-50"
                 >
                   {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit Request"}
                 </button>

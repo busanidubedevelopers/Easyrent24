@@ -80,7 +80,7 @@ function SuccessContent() {
             <div className="flex flex-col gap-3">
               <Link
                 href="/dashboard"
-                className="inline-flex h-10 items-center justify-center rounded-md bg-brand px-6 text-sm font-medium text-white hover:bg-brand/90 transition-colors"
+                className="inline-flex h-10 items-center justify-center rounded-md bg-brand px-6 text-sm font-medium text-white hover:bg-gold-600 transition-colors"
               >
                 Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
               </Link>

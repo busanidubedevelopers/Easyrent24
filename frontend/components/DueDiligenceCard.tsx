@@ -73,7 +73,7 @@ export function DueDiligenceCard({ applicationId, refreshKey }: { applicationId:
         </div>
         <a
           href={`/api/applications/${applicationId}/due-diligence/pdf`}
-          className="shrink-0 inline-flex items-center gap-2 rounded-md bg-brand text-white px-4 py-2 text-sm font-medium hover:bg-brand/90"
+          className="shrink-0 inline-flex items-center gap-2 rounded-md bg-brand text-white px-4 py-2 text-sm font-medium hover:bg-gold-600"
         >
           <Download className="h-4 w-4" /> Download due diligence report
         </a>

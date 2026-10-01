@@ -1,36 +1,40 @@
 @echo off
 setlocal EnableDelayedExpansion
-title EasyRent24 (public - live PayFast)
+title EasyRent24 - shared with client
 rem ============================================================================
-rem  Double-click to run EasyRent24 with REAL PayFast payments on this machine.
+rem  Double-click to put EasyRent24 on the internet for your client to test.
 rem
-rem  PayFast confirms payments by calling the app from the internet (ITN), which
-rem  it can't do to localhost. This starts a free Cloudflare quick tunnel so it
-rem  can, while you keep browsing at http://localhost:3000.
+rem  Starts a free Cloudflare quick tunnel to the app on this computer and gives
+rem  you a https://....trycloudflare.com link to send to your client. Payments
+rem  use the built-in prototype checkout (FNB cards approve, no real money).
 rem
-rem  Needs: Docker Desktop, cloudflared, and your PayFast merchant key +
-rem  passphrase in the .env file next to this script.
-rem  Stop:  close the "EasyRent tunnel" window, then  docker compose down
+rem  The link works only while this computer is on, Docker is running and the
+rem  "EasyRent tunnel" window is open. It changes every time you run this.
+rem  Stop sharing: close the "EasyRent tunnel" window.
+rem
+rem  Needs: Docker Desktop, cloudflared (winget install Cloudflare.cloudflared)
 rem ============================================================================
 
 cd /d "%~dp0"
 echo.
-echo  EasyRent24 - public mode (real PayFast payments)
-echo  ------------------------------------------------
+echo  EasyRent24 - share with your client
+echo  -----------------------------------
 
-rem --- PayFast credentials present? --------------------------------------------
-findstr /r /c:"^PAYFAST_MERCHANT_KEY=..*" .env >nul 2>&1
+rem --- Safety: never go public with the default login secret or live payments
+findstr /r /c:"^JWT_SECRET=.........................................*" .env >nul 2>&1
 if errorlevel 1 (
-    echo.
-    echo  Your PayFast merchant key is not set.
-    echo  Open .env in this folder and fill in PAYFAST_MERCHANT_KEY and PAYFAST_PASSPHRASE
-    echo  from PayFast dashboard -^> Settings -^> Integration, then run this again.
+    echo  .env has no JWT_SECRET. Add a long random value before sharing the app.
+    goto :fail
+)
+findstr /r /c:"^PAYFAST_MODE=live" .env >nul 2>&1
+if not errorlevel 1 (
+    echo  .env is set to live PayFast. Client testing uses the prototype checkout:
+    echo  set PAYFAST_MODE=sandbox in .env, then run this again.
     goto :fail
 )
 
 where cloudflared >nul 2>&1
 if errorlevel 1 (
-    echo.
     echo  cloudflared is not installed. Install it with:  winget install Cloudflare.cloudflared
     goto :fail
 )
@@ -62,15 +66,13 @@ rem --- Public tunnel ----------------------------------------------------------
 set "TUNNEL_LOG=%TEMP%\easyrent-tunnel.log"
 taskkill /fi "WINDOWTITLE eq EasyRent tunnel*" /f >nul 2>&1
 del "%TUNNEL_LOG%" >nul 2>&1
-echo  [2/4] Opening a public tunnel for PayFast (up to a minute)...
-start "EasyRent tunnel" /min cmd /c "cloudflared tunnel --no-autoupdate --protocol http2 --url http://localhost:3000 2> "%TUNNEL_LOG%""
+echo  [2/4] Opening the public link (up to a minute)...
+start "EasyRent tunnel" /min cmd /c "cloudflared tunnel --no-autoupdate --url http://localhost:3000 2> "%TUNNEL_LOG%""
 set "PUBLIC_URL="
 set /a waited=0
 :wait_tunnel
 ping -n 2 127.0.0.1 >nul
 set /a waited+=1
-rem Only read the URL once the tunnel is registered: looking the name up any
-rem earlier makes DNS cache it as "does not exist".
 for /f "usebackq delims=" %%u in (`powershell -NoProfile -Command "$t = Get-Content -Raw '%TUNNEL_LOG%' -ErrorAction SilentlyContinue; if ($t -match 'Registered tunnel connection' -and $t -match '(https://[a-z0-9-]+\.trycloudflare\.com)') { $Matches[1] }"`) do set "PUBLIC_URL=%%u"
 if defined PUBLIC_URL goto :tunnel_ready
 if !waited! geq 180 (
@@ -79,12 +81,12 @@ if !waited! geq 180 (
 )
 goto :wait_tunnel
 :tunnel_ready
-echo        PayFast will notify:  !PUBLIC_URL!/api/payments/payfast/notify
 
-rem --- App (APP_URL = tunnel for PayFast; browser returns to localhost) --------
+rem --- App: invite links and payment returns use the public link ---------------
 set "APP_URL=!PUBLIC_URL!"
-set "APP_BROWSER_URL=http://localhost:3000"
-echo  [3/4] Starting database and app...
+set "APP_BROWSER_URL="
+set "PAYMENT_PROVIDER=demo"
+echo  [3/4] Building and starting the app for !PUBLIC_URL! (a few minutes)...
 docker compose up -d --build
 if errorlevel 1 (
     echo  Could not start the containers. See the messages above.
@@ -105,19 +107,26 @@ set /a waited+=2
 goto :wait_app
 
 :app_ready
-start "" http://localhost:3000
+echo !PUBLIC_URL!| clip
+start "" !PUBLIC_URL!
 echo.
-echo  EasyRent24 is running with LIVE PayFast payments.
-echo    Browse:           http://localhost:3000
-echo    PayFast notifies: !PUBLIC_URL!
+echo  ===========================================================================
+echo   EasyRent24 is live. Send your client this link (already copied):
 echo.
-echo  Payments here are REAL. Keep the minimised "EasyRent tunnel" window open,
-echo  or PayFast can't confirm payments. The address changes every run.
+echo     !PUBLIC_URL!
 echo.
-echo  Demo accounts (password: Password123^^!)
-echo    landlord@easyrent24.co.za   agent@easyrent24.co.za   tenant@easyrent24.co.za   handyman@easyrent24.co.za   admin@easyrent24.co.za
+echo   Logins (password: Password123^^!)
+echo     Super admin   admin@easyrent24.co.za
+echo     Agent         agent@easyrent24.co.za
+echo     Landlord      landlord@easyrent24.co.za
+echo   Tenants sign up through invite links the agent or landlord creates.
+echo   Payments: choose FNB to approve. Other banks are declined. No real money.
 echo.
-ping -n 21 127.0.0.1 >nul
+echo   Keep this computer on and the "EasyRent tunnel" window open.
+echo   To stop sharing, close the "EasyRent tunnel" window.
+echo  ===========================================================================
+echo.
+pause
 exit /b 0
 
 :fail

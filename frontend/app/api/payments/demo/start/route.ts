@@ -14,5 +14,5 @@ export async function POST(request: NextRequest) {
   if (!DEMO_REFERENCE_REGEX.test(reference)) {
     return NextResponse.json({ error: 'Invalid payment reference.' }, { status: 400 });
   }
-  return new NextResponse(null, { status: 303, headers: { Location: `/pay/demo/${encodeURIComponent(reference)}` } });
+  return new NextResponse(null, { status: 303, headers: { Location: `/pay/${encodeURIComponent(reference)}` } });
 }

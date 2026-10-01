@@ -24,7 +24,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     // Throws if someone pairs the demo gateway with live PayFast.
     if (paymentProvider() !== 'demo') {
-      return NextResponse.json({ error: 'The demo gateway is switched off.' }, { status: 404 });
+      return NextResponse.json({ error: 'This payment method is not available.' }, { status: 404 });
     }
     const profile = await getAuthenticatedProfile(await getServerDb());
     const payment = await loadDemoPaymentForPayer(reference, profile.id);

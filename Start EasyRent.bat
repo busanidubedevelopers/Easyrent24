@@ -81,7 +81,7 @@ echo.
 echo  EasyRent24 is running at http://localhost:3000
 echo.
 echo  Demo accounts (password: Password123^^!)
-echo    landlord@demo.com   agent@demo.com   tenant@demo.com   handyman@demo.com
+echo    landlord@easyrent24.co.za   agent@easyrent24.co.za   tenant@easyrent24.co.za   handyman@easyrent24.co.za   admin@easyrent24.co.za
 echo.
 echo  To stop it later, run:  docker compose down   (in this folder)
 echo  For real PayFast payments use "Start EasyRent (public).bat" instead.

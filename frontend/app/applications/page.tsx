@@ -3,16 +3,24 @@
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { db } from "@/lib/apiClient";
-import { 
-  AlertTriangle, 
+import { 
+
+  AlertTriangle, 
+
   Check, 
-  CheckCircle2, 
-  FileText,
+  CheckCircle2, 
+
+  FileText,
+
   Mail,
   Search, 
-  Send,
-  User,
-  X,
+  Send,
+
+
+  User,
+
+  X,
+
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VerificationPanel } from "@/components/VerificationPanel";
@@ -256,7 +264,7 @@ EasyRent Management`;
          <div className="absolute inset-0 bg-gradient-to-r from-brand/5 to-indigo-400/5 dark:from-brand/10 dark:to-indigo-400/10 pointer-events-none" />
          <div className="container mx-auto px-4 relative z-10">
             <h1 className="text-4xl font-extrabold tracking-tight mb-2 text-gradient">Tenant Applications</h1>
-            <p className="text-muted-foreground text-lg">Review extensive credit reports and verify potential tenants with ease.</p>
+            <p className="text-muted-foreground text-lg">Review each applicant’s due diligence, affordability and documents before you decide.</p>
          </div>
       </div>
 
@@ -393,7 +401,7 @@ EasyRent Management`;
                         </button>
                         <button 
                            onClick={handleApprove}
-                           className="flex-1 sm:flex-none bg-brand text-white hover:bg-brand/90 hover:shadow-lg hover:shadow-brand/20 px-8 py-2 rounded-full text-sm font-bold transition-all flex items-center justify-center gap-2 hover:-translate-y-0.5"
+                           className="flex-1 sm:flex-none bg-brand text-white hover:bg-gold-600 hover:shadow-lg hover:shadow-brand/20 px-8 py-2 rounded-full text-sm font-bold transition-all flex items-center justify-center gap-2 hover:-translate-y-0.5"
                         >
                            <CheckCircle2 className="h-4 w-4" />
                            Approve &amp; Generate Lease
@@ -415,7 +423,7 @@ EasyRent Management`;
                            </div>
                            <div className="flex items-center gap-8">
                               <div className="text-center">
-                                 <div className="text-xs text-muted-foreground uppercase tracking-widest font-bold mb-2">Credit Score</div>
+                                 <div className="text-xs text-muted-foreground uppercase tracking-widest font-bold mb-2" title="EasyRent's own estimate from affordability. Not a credit bureau score.">Risk score</div>
                                  <div className={cn(
                                     "text-4xl font-black tracking-tighter drop-shadow-sm",
                                     selectedApp.score >= 650 ? "text-green-600" :
@@ -423,6 +431,7 @@ EasyRent Management`;
                                  )}>
                                     {selectedApp.score}
                                  </div>
+                                 <div className="mt-1 text-[10px] text-muted-foreground">Estimate, not a credit bureau score</div>
                               </div>
                            </div>
                         </div>

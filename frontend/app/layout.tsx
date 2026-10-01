@@ -1,23 +1,30 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { ConditionalLayoutWrapper } from "@/components/ConditionalLayoutWrapper";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
 
+// Same typefaces as easyrent24.co.za: Inter for text, Playfair Display for headings.
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
 });
+const playfair = Playfair_Display({
+  variable: "--font-playfair",
+  subsets: ["latin"],
+  weight: ["400", "600", "700"],
+  style: ["normal", "italic"],
+});
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://easyrent.com'),
+  metadataBase: new URL('https://easyrent24.co.za'),
   title: {
-    default: "EasyRent | The Modern Rental Marketplace",
-    template: "%s | EasyRent",
+    default: "Easy Rent 24 | Rental platform for South Africa",
+    template: "%s | Easy Rent 24",
   },
-  description: "EasyRent is the premier platform connecting landlords, tenants, and handymen. Verified credit reports, seamless applications, and reliable property maintenance in one place.",
+  description: "EasyRent connects landlords, agents, tenants and handymen: tenant screening with affordability checks, online applications, digital leases and property maintenance in one place.",
   keywords: ["renting", "landlord", "tenant", "handyman", "credit check", "property management", "rental applications"],
   authors: [{ name: "EasyRent Team" }],
   creator: "EasyRent",
@@ -35,7 +42,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "EasyRent | The Modern Rental Marketplace",
-    description: "EasyRent is the premier platform connecting landlords, tenants, and handymen. Verified credit reports, seamless applications, and reliable property maintenance.",
+    description: "EasyRent connects landlords, agents, tenants and handymen: tenant screening with affordability checks, online applications and digital leases.",
     url: 'https://easyrent.com',
     siteName: 'EasyRent',
     images: [
@@ -81,7 +88,7 @@ export default function RootLayout({
         "@id": "https://easyrent.com/#agent",
         "name": "EasyRent",
         "image": "https://easyrent.com/images/hero-apartment.png",
-        "description": "The modern rental marketplace connecting landlords, tenants, and handymen with verified credit reports and seamless applications.",
+        "description": "A rental platform for South Africa connecting landlords, agents, tenants and handymen, with tenant due diligence, affordability checks and digital leases.",
         "url": "https://easyrent.com",
         "address": {
           "@type": "PostalAddress",
@@ -136,7 +143,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${inter.variable} antialiased min-h-screen flex flex-col bg-background text-foreground font-sans`}
+        className={`${inter.variable} ${playfair.variable} antialiased min-h-screen flex flex-col bg-background text-foreground font-sans`}
         suppressHydrationWarning
       >
         <ConditionalLayoutWrapper>

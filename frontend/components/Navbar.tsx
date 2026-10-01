@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Building2, Menu, UserCircle, LogOut } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
+import { Menu, UserCircle, LogOut } from "lucide-react";
 import { getServerDb } from "@/lib/serverDb";
 import { NotificationBell } from "./NotificationBell";
 
@@ -24,10 +25,7 @@ export async function Navbar() {
       <div className="flex h-16 items-center gap-3 px-4 md:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <Link href="/" className="flex shrink-0 items-center gap-2 group">
-            <div className="rounded-xl bg-gradient-to-tr from-brand to-cyan-500 p-1.5 shadow-md shadow-brand/20 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3">
-              <Building2 className="h-5 w-5 text-white" />
-            </div>
-            <span className="text-xl font-bold tracking-tight text-gradient">EasyRent</span>
+            <BrandLogo className="transition-transform duration-300 group-hover:scale-[1.02]" />
           </Link>
 
           {user && role === 'landlord' && (
@@ -61,7 +59,6 @@ export async function Navbar() {
               <Link href="/find-home" className="hover:text-foreground transition-all duration-200 hover:-translate-y-[1px]">Find a Home</Link>
               {user && <Link href="/leases" className="hover:text-foreground transition-all duration-200 hover:-translate-y-[1px]">My Lease</Link>}
               {user && <Link href="/maintenance" className="hover:text-foreground transition-all duration-200 hover:-translate-y-[1px]">Report an Issue</Link>}
-              {!user && <Link href="/signin" className="hover:text-foreground transition-all duration-200 hover:-translate-y-[1px]">Sign In</Link>}
             </>
           )}
           {(!user || role === 'handyman') && (
@@ -77,7 +74,7 @@ export async function Navbar() {
               </Link>
               <Link
                 href="/signup"
-                className="hidden lg:flex items-center justify-center rounded-full bg-gradient-to-r from-brand to-indigo-500 px-6 py-2.5 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_4px_14px_0_rgba(79,70,229,0.39)] transition-all duration-300 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_6px_20px_rgba(79,70,229,0.23)] hover:-translate-y-[2px]"
+                className="hidden lg:flex items-center justify-center rounded-full bg-gradient-to-r from-brand to-indigo-500 px-6 py-2.5 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_4px_14px_0_rgba(15,23,42,0.39)] transition-all duration-300 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_6px_20px_rgba(15,23,42,0.23)] hover:-translate-y-[2px]"
               >
                 Get Started
               </Link>

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import { POST as createInvite } from '../../app/api/invites/route';
+import { GET as listInvites, POST as createInvite } from '../../app/api/invites/route';
 import { GET as previewInvite } from '../../app/api/invites/[token]/route';
 import { POST as claimInvite } from '../../app/api/invites/[token]/claim/route';
 import { POST as payInvite } from '../../app/api/invites/[token]/pay/route';
@@ -185,6 +185,32 @@ describe('POST /api/invites', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+describe('GET /api/invites', () => {
+  it('gives pending invites a copyable link with the current address, and never returns the raw token', async () => {
+    vi.mocked(requireAuthenticatedRole).mockResolvedValue(landlord);
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    const past = new Date(Date.now() - 86_400_000).toISOString();
+    const base = { property_id: PROPERTY_ID, invitee_email: 'x@example.com', admin_fee_amount: 150, created_at: past };
+    mockServer({
+      tenant_invites: query({
+        data: [
+          { ...base, id: 'i1', token: TOKEN, invitee_name: 'Pending', status: 'pending', expires_at: future },
+          { ...base, id: 'i2', token: 'b'.repeat(43), invitee_name: 'Expired', status: 'pending', expires_at: past },
+          { ...base, id: 'i3', token: 'c'.repeat(43), invitee_name: 'Paid', status: 'paid', expires_at: future },
+        ],
+      }),
+      properties: query({ data: { id: PROPERTY_ID, title: 'Sea Point Flat', address: '45 Main Road', price: 12500, landlord_id: landlord.id } }),
+    });
+
+    const res = await listInvites();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.invites.map((i: any) => i.link)).toEqual([`http://localhost:3000/signup?invite=${TOKEN}`, null, null]);
+    expect(JSON.stringify(body)).not.toContain('"token"');
+  });
+});
+
 describe('GET /api/invites/[token]', () => {
   it('returns a public preview without internal ids or the token', async () => {
     mockAdmin({ tenant_invites: [query({ data: pendingInvite })] });

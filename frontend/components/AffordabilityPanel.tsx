@@ -178,7 +178,10 @@ export function AffordabilityPanel({ assessment }: { assessment: AffordabilityAs
       )}
 
       <p className="text-xs text-muted-foreground">
-        Living costs are estimated at 25% of take-home pay (at least R3 000 per adult). This is decision support — the final decision is yours.
+        {f.living_costs_source === "declared"
+          ? "Living costs are the applicant's declared monthly expenses (excluding debt and savings)."
+          : "Living costs are estimated at 25% of take-home pay (at least R3 000 per adult)."}{" "}
+        This is decision support — the final decision is yours.
       </p>
     </section>
   );

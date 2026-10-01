@@ -316,7 +316,7 @@ export default function LeaseWorkflowPage() {
                         Cancel
                       </button>
                     )}
-                    <button type="submit" disabled={busy} className="bg-brand text-white px-6 py-2 rounded-md font-medium flex items-center gap-2 hover:bg-brand/90 disabled:opacity-50">
+                    <button type="submit" disabled={busy} className="bg-brand text-white px-6 py-2 rounded-md font-medium flex items-center gap-2 hover:bg-gold-600 disabled:opacity-50">
                       {busy && <Loader2 className="h-4 w-4 animate-spin" />}
                       Generate lease
                     </button>
@@ -334,7 +334,7 @@ export default function LeaseWorkflowPage() {
                   </div>
                   <LeaseDocumentView document={data.document} />
                   <div className="flex justify-end pt-4 border-t border-border">
-                    <button onClick={sendToTenant} disabled={busy} className="bg-brand text-white px-6 py-3 rounded-md font-medium flex items-center gap-2 hover:bg-brand/90 disabled:opacity-50">
+                    <button onClick={sendToTenant} disabled={busy} className="bg-brand text-white px-6 py-3 rounded-md font-medium flex items-center gap-2 hover:bg-gold-600 disabled:opacity-50">
                       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                       Approve & send to tenant
                     </button>
@@ -384,7 +384,7 @@ export default function LeaseWorkflowPage() {
                   <p className="text-muted-foreground max-w-md mx-auto mb-6">
                     Signed by both parties on {lease.executed_at ? new Date(lease.executed_at).toLocaleDateString() : "—"}. The signed PDF is stored and available to you and the tenant.
                   </p>
-                  <a href={pdfHref!} className="inline-flex items-center gap-2 bg-brand text-white px-6 py-3 rounded-md font-medium hover:bg-brand/90">
+                  <a href={pdfHref!} className="inline-flex items-center gap-2 bg-brand text-white px-6 py-3 rounded-md font-medium hover:bg-gold-600">
                     <Download className="h-4 w-4" /> Download signed PDF
                   </a>
                 </div>

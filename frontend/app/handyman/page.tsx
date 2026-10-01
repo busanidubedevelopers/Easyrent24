@@ -298,7 +298,7 @@ export default function HandymanDashboard() {
                          <button
                            onClick={() => markTicketResolved(ticket.id)}
                            disabled={resolvingTicketId === ticket.id}
-                           className="inline-flex items-center justify-center rounded-md bg-brand px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand/90 disabled:opacity-50"
+                           className="inline-flex items-center justify-center rounded-md bg-brand px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-gold-600 disabled:opacity-50"
                          >
                            {resolvingTicketId === ticket.id ? '...' : 'Mark Resolved'}
                          </button>
@@ -354,7 +354,7 @@ export default function HandymanDashboard() {
                        <div className="text-lg font-bold mb-1">{job.budget}</div>
                        <Link 
                          href={`/handyman/job/${job.id}`}
-                         className="inline-flex items-center justify-center rounded-md bg-brand px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand/90"
+                         className="inline-flex items-center justify-center rounded-md bg-brand px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-gold-600"
                        >
                          View & Bid
                        </Link>

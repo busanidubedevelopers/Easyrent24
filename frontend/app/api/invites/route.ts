@@ -15,6 +15,10 @@ import { loadProperty } from '@backend/lib/applicationAccess';
  *
  * Lists the tenant invites the caller has sent, newest first, so the
  * landlord/agent can see who has registered and paid the admin fee.
+ *
+ * Invites still waiting for the tenant to sign up include their link, built
+ * with the app's current address, so the agent can copy and re-send it
+ * (e.g. after the public address changed). The raw token is never returned.
  */
 export async function GET() {
   try {
@@ -23,7 +27,7 @@ export async function GET() {
 
     const { data: rows, error } = await db
       .from('tenant_invites')
-      .select('id, property_id, invitee_name, invitee_email, admin_fee_amount, status, registered_at, paid_at, expires_at, created_at')
+      .select('id, token, property_id, invitee_name, invitee_email, admin_fee_amount, status, registered_at, paid_at, expires_at, created_at')
       .eq('inviter_id', profile.id)
       .order('created_at', { ascending: false });
 
@@ -39,10 +43,15 @@ export async function GET() {
         if (property) properties.set(property.id, { title: property.title, address: property.address });
       })
     );
-    const invites = (rows ?? []).map((r: { property_id: string | null }) => ({
-      ...r,
-      properties: r.property_id ? properties.get(r.property_id) ?? null : null,
-    }));
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const now = new Date();
+    const invites = (rows ?? []).map(
+      ({ token, ...r }: { token: string; property_id: string | null; status: string; expires_at: string }) => ({
+        ...r,
+        properties: r.property_id ? properties.get(r.property_id) ?? null : null,
+        link: appUrl && r.status === 'pending' && new Date(r.expires_at) > now ? buildInviteLink(appUrl, token) : null,
+      })
+    );
 
     return NextResponse.json({ invites });
   } catch (err) {

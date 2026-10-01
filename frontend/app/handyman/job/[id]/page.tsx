@@ -409,7 +409,7 @@ export default function JobDetailPage() {
                      </button>
                      <button 
                        onClick={() => setShowChat(!showChat)}
-                       className="h-10 w-10 rounded-full bg-brand text-white flex items-center justify-center hover:bg-brand/90"
+                       className="h-10 w-10 rounded-full bg-brand text-white flex items-center justify-center hover:bg-gold-600"
                      >
                         <MessageSquare className="h-5 w-5" />
                      </button>
@@ -571,7 +571,7 @@ export default function JobDetailPage() {
                            <button 
                                type="submit" 
                                disabled={isSubmittingBid}
-                               className="w-full bg-brand text-white py-3 rounded-lg font-bold hover:bg-brand/90 transition-all flex items-center justify-center gap-2"
+                               className="w-full bg-brand text-white py-3 rounded-lg font-bold hover:bg-gold-600 transition-all flex items-center justify-center gap-2"
                            >
                                {isSubmittingBid ? "Submitting..." : "Submit Bid"}
                            </button>
@@ -617,7 +617,7 @@ export default function JobDetailPage() {
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                     />
-                    <button type="submit" className="h-9 w-9 bg-brand text-white rounded-full flex items-center justify-center hover:bg-brand/90">
+                    <button type="submit" className="h-9 w-9 bg-brand text-white rounded-full flex items-center justify-center hover:bg-gold-600">
                        <Send className="h-4 w-4" />
                     </button>
                  </form>
@@ -642,7 +642,7 @@ export default function JobDetailPage() {
                        <button
                           onClick={handleFundEscrow}
                           disabled={isFundingEscrow}
-                          className="w-full bg-brand text-white py-2 rounded-md font-medium shadow hover:bg-brand/90 transition-colors disabled:opacity-50"
+                          className="w-full bg-brand text-white py-2 rounded-md font-medium shadow hover:bg-gold-600 transition-colors disabled:opacity-50"
                        >
                           {isFundingEscrow ? "Redirecting to PayFast..." : "Pay & Start Job"}
                        </button>
@@ -683,7 +683,7 @@ export default function JobDetailPage() {
                        <button
                           onClick={handleSubmitWorkForReview}
                           disabled={isReleasingFunds}
-                          className="w-full bg-brand text-white py-2 rounded-md font-medium shadow hover:bg-brand/90 transition-colors disabled:opacity-50"
+                          className="w-full bg-brand text-white py-2 rounded-md font-medium shadow hover:bg-gold-600 transition-colors disabled:opacity-50"
                        >
                           {isReleasingFunds ? "Submitting..." : "Submit Work for Review"}
                        </button>
@@ -759,7 +759,7 @@ export default function JobDetailPage() {
                         <button 
                            onClick={handleSubmitReview}
                            disabled={rating === 0}
-                           className="w-full inline-flex items-center justify-center rounded-md bg-brand px-4 py-2 text-sm font-medium text-white shadow transition-colors hover:bg-brand/90 disabled:opacity-50 disabled:pointer-events-none"
+                           className="w-full inline-flex items-center justify-center rounded-md bg-brand px-4 py-2 text-sm font-medium text-white shadow transition-colors hover:bg-gold-600 disabled:opacity-50 disabled:pointer-events-none"
                         >
                            Submit Review
                         </button>

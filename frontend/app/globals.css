@@ -1,74 +1,203 @@
 @import "tailwindcss";
 
+/*
+ * The site is designed light: inputs are forced white below. Only apply
+ * dark: styles when a page opts in with class="dark", so a visitor whose
+ * computer is in dark mode doesn't get half-dark pages.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Theme: the Easy Rent 24 brand from easyrent24.co.za — deep navy with a
+ * gold accent, Inter for text and Playfair Display for headings.
+ *
+ * Tailwind v4 only generates a colour class (bg-brand, text-muted-foreground,
+ * border-input…) when its colour is defined here — without these, buttons
+ * like "bg-brand text-white" render white on white.
+ */
+/*
+ * Fonts come from next/font (variables set on <body>), so they're inlined:
+ * a plain @theme would resolve var(--font-inter) on :root, where it's unset.
+ */
+@theme inline {
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-serif: var(--font-playfair), Georgia, serif;
+}
+
+@theme {
+
+  /* Navy (the site's brand scale) and gold (its accent). */
+  --color-brand: #0f172a;
+  --color-brand-foreground: #ffffff;
+  --color-brand-50: #f8fafc;
+  --color-brand-100: #f1f5f9;
+  --color-brand-200: #e2e8f0;
+  --color-brand-300: #cbd5e1;
+  --color-brand-400: #94a3b8;
+  --color-brand-500: #64748b;
+  --color-brand-600: #475569;
+  --color-brand-700: #334155;
+  --color-brand-800: #1e293b;
+  --color-brand-900: #0f172a;
+  --color-gold: #b4975a;
+  --color-gold-400: #c5a86a;
+  --color-gold-500: #b4975a;
+  --color-gold-600: #99804c;
+  --color-gold-700: #7a6639;
+
+  --color-primary: #0f172a;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f1f5f9;
+  --color-secondary-foreground: #0f172a;
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #475569;
+  --color-accent: #f1f5f9;
+  --color-accent-foreground: #0f172a;
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0f172a;
+  --color-background: #ffffff;
+  --color-foreground: #0f172a;
+  --color-border: #e2e8f0;
+  --color-input: #cbd5e1;
+  --color-ring: #b4975a;
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+
+  /*
+   * The app's earlier indigo/purple/blue design, remapped onto the brand so
+   * every page follows it: light tints → slate, solid buttons → navy,
+   * hover shades and small accents → gold (as on the website). Solid shades
+   * stay dark enough for white text.
+   */
+  --color-indigo-50: #f8fafc;
+  --color-indigo-100: #f1f5f9;
+  --color-indigo-200: #e2e8f0;
+  --color-indigo-300: #cbd5e1;
+  --color-indigo-400: #b4975a;
+  --color-indigo-500: #1e293b;
+  --color-indigo-600: #0f172a;
+  --color-indigo-700: #99804c;
+  --color-indigo-800: #1e293b;
+  --color-indigo-900: #0f172a;
+  --color-indigo-950: #020617;
+  --color-violet-500: #1e293b;
+  --color-violet-600: #0f172a;
+  --color-purple-50: #f8fafc;
+  --color-purple-100: #f1f5f9;
+  --color-purple-500: #1e293b;
+  --color-purple-600: #0f172a;
+  --color-purple-700: #1e293b;
+  --color-blue-50: #f8fafc;
+  --color-blue-100: #f1f5f9;
+  --color-blue-200: #e2e8f0;
+  --color-blue-300: #cbd5e1;
+  --color-blue-400: #94a3b8;
+  --color-blue-500: #334155;
+  --color-blue-600: #1e293b;
+  --color-blue-700: #1e293b;
+  --color-blue-800: #0f172a;
+  --color-blue-900: #0f172a;
+  --color-cyan-400: #c5a86a;
+  --color-cyan-500: #b4975a;
+  --color-cyan-600: #99804c;
+
+  --shadow-soft: 0 20px 40px -15px rgba(0, 0, 0, 0.05);
+  --shadow-glow: 0 0 20px rgba(180, 151, 90, 0.3);
+}
+
 :root {
   --background: #ffffff;
-  --foreground: #111827;
-  --brand: #4f46e5;
+  --foreground: #0f172a;
+  --brand: #0f172a;
   --brand-foreground: #ffffff;
-  --border: #e5e7eb;
+  --border: #e2e8f0;
 }
 
-html {
-  scroll-behavior: smooth;
-}
+/*
+ * Site-wide defaults live in the base layer so Tailwind classes on an element
+ * (e.g. text-white on a link styled as a button) always win over them.
+ * Unlayered rules here would beat every utility class in Tailwind v4.
+ */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
 
-body {
-  margin: 0;
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-  line-height: 1.5;
-}
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-inter), system-ui, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 
-* {
-  box-sizing: border-box;
-}
+  /* Headings in Playfair Display, as on easyrent24.co.za. */
+  h1, h2, h3 {
+    font-family: var(--font-playfair), Georgia, serif;
+    letter-spacing: -0.01em;
+  }
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
+  ::selection {
+    background: #b4975a;
+    color: #ffffff;
+  }
 
-img {
-  max-width: 100%;
-  display: block;
-}
+  * {
+    box-sizing: border-box;
+  }
 
-button, input, select, textarea {
-  font: inherit;
-}
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 
-input,
-select,
-textarea {
-  background-color: #ffffff !important;
-  color: #111827 !important;
-  border: 1px solid #d1d5db;
-}
+  img {
+    max-width: 100%;
+    display: block;
+  }
 
-input::placeholder,
-textarea::placeholder {
-  color: #6b7280;
-}
+  button, input, select, textarea {
+    font: inherit;
+  }
 
-main {
-  min-height: 100vh;
-}
+  input,
+  select,
+  textarea {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border: 1px solid #cbd5e1;
+  }
 
-.container {
-  width: min(100%, 1280px);
-  margin-inline: auto;
-  padding-inline: 1rem;
-}
-
-@media (min-width: 640px) {
-  .container {
-    padding-inline: 1.5rem;
+  input::placeholder,
+  textarea::placeholder {
+    color: #6b7280;
   }
 }
 
-@media (min-width: 1024px) {
+@layer components {
+  main {
+    min-height: 100vh;
+  }
+
   .container {
-    padding-inline: 2rem;
+    width: min(100%, 1280px);
+    margin-inline: auto;
+    padding-inline: 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .container {
+      padding-inline: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .container {
+      padding-inline: 2rem;
+    }
   }
 }

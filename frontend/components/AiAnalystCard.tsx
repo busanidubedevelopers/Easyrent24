@@ -86,7 +86,7 @@ export function AiAnalystCard({ applicationId }: { applicationId: string }) {
           <button
             onClick={run}
             disabled={busy}
-            className="shrink-0 inline-flex items-center gap-2 rounded-md bg-brand text-white px-4 py-2 text-sm font-medium hover:bg-brand/90 disabled:opacity-60"
+            className="shrink-0 inline-flex items-center gap-2 rounded-md bg-brand text-white px-4 py-2 text-sm font-medium hover:bg-gold-600 disabled:opacity-60"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {busy ? "Claude is reading the documents…" : report ? "Ask again" : "Ask the AI analyst"}

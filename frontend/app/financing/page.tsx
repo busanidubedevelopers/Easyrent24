@@ -91,7 +91,7 @@ function FinancingContent() {
                 <button 
                   disabled={!selectedProvider}
                   onClick={() => setStep(2)}
-                  className="w-full inline-flex h-11 items-center justify-center rounded-md bg-brand px-8 text-sm font-medium text-white shadow transition-colors hover:bg-brand/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+                  className="w-full inline-flex h-11 items-center justify-center rounded-md bg-brand px-8 text-sm font-medium text-white shadow transition-colors hover:bg-gold-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
                 >
                    Continue Application
                 </button>
@@ -127,7 +127,7 @@ function FinancingContent() {
                 <button 
                   onClick={handleApply}
                   disabled={isLoading}
-                  className="w-full inline-flex h-11 items-center justify-center rounded-md bg-brand px-8 text-sm font-medium text-white shadow transition-colors hover:bg-brand/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+                  className="w-full inline-flex h-11 items-center justify-center rounded-md bg-brand px-8 text-sm font-medium text-white shadow transition-colors hover:bg-gold-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
                 >
                    {isLoading ? (
                       <>
@@ -169,7 +169,7 @@ function FinancingContent() {
                 <div className="pt-4 w-full">
                     <button 
                        onClick={handleComplete}
-                       className="w-full inline-flex h-11 items-center justify-center rounded-md bg-brand px-8 text-sm font-medium text-white shadow transition-colors hover:bg-brand/90"
+                       className="w-full inline-flex h-11 items-center justify-center rounded-md bg-brand px-8 text-sm font-medium text-white shadow transition-colors hover:bg-gold-600"
                     >
                        Pay to Service Escrow
                     </button>

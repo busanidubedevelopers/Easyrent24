@@ -353,7 +353,7 @@ export default function DocumentsPage() {
                         <button 
                            onClick={handleCreateInvoice}
                            disabled={isSubmittingInvoice}
-                           className="w-full bg-brand text-white h-11 rounded-md font-medium hover:bg-brand/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                           className="w-full bg-brand text-white h-11 rounded-md font-medium hover:bg-gold-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
                            <Send className="h-4 w-4" />
                            {isSubmittingInvoice ? 'Creating...' : autoSchedule ? "Save & Schedule" : "Create & Send Invoice"}
@@ -422,7 +422,7 @@ export default function DocumentsPage() {
                       <button className="border border-input px-4 py-2 rounded-md text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                          Filter
                       </button>
-                      <button className="bg-brand text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-brand/90 transition-colors flex items-center gap-2">
+                      <button className="bg-brand text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gold-600 transition-colors flex items-center gap-2">
                          <Upload className="h-4 w-4" /> Upload File
                       </button>
                    </div>

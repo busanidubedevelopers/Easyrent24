@@ -7,7 +7,7 @@ import { APPLICATION_FEE_ZAR } from "@backend/lib/applications";
 
 export default function CheckoutPage() {
   const [isLoading, setIsLoading] = useState(false);
-  const [userEmail, setUserEmail] = useState("demo@easyrent.com");
+  const [userEmail, setUserEmail] = useState("");
 
   useEffect(() => {
     db.auth.getUser().then(({ data }) => {
@@ -104,15 +104,15 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            <h3 className="text-xl font-bold mb-2">PayFast Sandbox Demo</h3>
+            <h3 className="text-xl font-bold mb-2">PayFast Sandbox</h3>
             <p className="text-sm text-muted-foreground mb-6 max-w-md">
-              Clicking below will redirect to the official PayFast Sandbox checkout page where you can demo live Card, Instant EFT, SnapScan, and Zapper payments.
+              Clicking below will redirect to the official PayFast Sandbox checkout page where you can test Card, Instant EFT, SnapScan, and Zapper payments.
             </p>
 
             <button
               onClick={handlePayFast}
               disabled={isLoading}
-              className="w-full max-w-sm inline-flex h-12 items-center justify-center rounded-md bg-brand px-8 text-base font-semibold text-white shadow-md transition-colors hover:bg-brand/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              className="w-full max-w-sm inline-flex h-12 items-center justify-center rounded-md bg-brand px-8 text-base font-semibold text-white shadow-md transition-colors hover:bg-gold-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             >
               {isLoading ? (
                 <>

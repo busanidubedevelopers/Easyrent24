@@ -112,7 +112,7 @@ function PayAdminFee() {
             <button
               onClick={handlePay}
               disabled={isPaying}
-              className="w-full inline-flex h-11 items-center justify-center gap-2 rounded-md bg-brand px-6 text-sm font-medium text-white hover:bg-brand/90 transition-colors disabled:opacity-50"
+              className="w-full inline-flex h-11 items-center justify-center gap-2 rounded-md bg-brand px-6 text-sm font-medium text-white hover:bg-gold-600 transition-colors disabled:opacity-50"
             >
               {isPaying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
               Pay admin fee

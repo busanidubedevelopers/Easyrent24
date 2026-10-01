@@ -69,7 +69,7 @@ export function LeaseSignForm({
       <button
         type="submit"
         disabled={isSigning || !accept || !fullName.trim()}
-        className="bg-brand text-white px-6 py-3 rounded-md font-bold flex items-center gap-2 hover:bg-brand/90 transition-all disabled:opacity-50"
+        className="bg-brand text-white px-6 py-3 rounded-md font-bold flex items-center gap-2 hover:bg-gold-600 transition-all disabled:opacity-50"
       >
         {isSigning ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenTool className="h-4 w-4" />}
         {submitLabel}
